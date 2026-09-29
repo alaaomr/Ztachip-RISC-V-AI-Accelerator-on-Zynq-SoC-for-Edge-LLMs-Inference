@@ -1,0 +1,17 @@
+RESUME NOTE — 3-model benchmark (written 2026-06-22, board powered OFF for a break)
+
+DONE & SAVED (results/ here and in bench/results/):
+  - Q4  : results_smollm135_q4.csv  -> 4.13 tok/s, 103 MB/tok, rd_active 59%
+  - Q8  : results_smollm135_q8.csv  -> 3.34 tok/s, 156 MB/tok, rd_active 71%
+  Memory-bound PROVEN (same compute, Q8 moves +50% bytes -> 19% slower).
+
+TODO when you return (board will be COLD, so use FULL bring-up = drop 'swap'):
+  bash /home/eslam-elshokafy/Desktop/AIDAChip_Workshop_01/ztachip/HW/examples/ZC702/run_model.sh 360m
+    -> brings board up + loads SMOLLM2_360M_Q4.ZUF (308 MB, ~80 min) + 30 prompts
+  Then:
+  python3 /home/eslam-elshokafy/Desktop/AIDAChip_Workshop_01/ztachip/HW/examples/ZC702/bench/summarize.py
+
+NOTES:
+  - Mailbox is at 0x30000000 (firmware rebuilt). Board scripts already updated.
+  - Model files ready in ztachip/models/: SMOLLM2_Q4.ZUF, SMOLLM2_Q8.ZUF, SMOLLM2_360M_Q4.ZUF
+  - JTAG load is ~65 KB/s (cable-limited; not fixable in SW). 360M load ~80 min.

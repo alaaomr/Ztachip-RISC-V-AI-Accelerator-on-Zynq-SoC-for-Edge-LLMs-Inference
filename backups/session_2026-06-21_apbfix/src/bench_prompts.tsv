@@ -1,0 +1,30 @@
+MATH-01	MATH	What is the derivative of f(x) = x^3 * sin(x)? Show your work step by step.
+MATH-02	MATH	Solve the system of equations: 3x + 2y = 12 and x - y = 1. Show each step.
+MATH-03	MATH	A geometric series has first term 5 and common ratio 0.4. What is the sum to infinity?
+MATH-04	MATH	Prove that the square root of 2 is irrational.
+MATH-05	MATH	What is the integral of 1/(1+x^2) dx? Explain the result.
+SCI-01	SCI	Explain the mechanism of CRISPR-Cas9 gene editing at the molecular level.
+SCI-02	SCI	What is the difference between nuclear fission and nuclear fusion? Give one example of each.
+SCI-03	SCI	Describe how a vaccine triggers an adaptive immune response.
+SCI-04	SCI	What is quantum entanglement and why does it not allow faster-than-light communication?
+SCI-05	SCI	Explain the process of protein synthesis from DNA transcription to translation.
+GEO-01	GEO	What are the five largest countries in the world by land area? List them in order.
+GEO-02	GEO	Explain why the Strait of Hormuz is geographically and geopolitically significant.
+GEO-03	GEO	Which river is the longest in Africa and through which countries does it flow?
+GEO-04	GEO	What is the Ring of Fire and why does it have high seismic and volcanic activity?
+GEO-05	GEO	Compare the climate zones of Norway and Egypt and explain the driving factors.
+HIST-01	HIST	What were the main causes of World War I? Identify at least three structural factors.
+HIST-02	HIST	Explain the significance of the Treaty of Westphalia 1648 for the modern state system.
+HIST-03	HIST	How did the Industrial Revolution change the social structure of 19th-century Britain?
+HIST-04	HIST	What was the Marshall Plan and what were its economic and geopolitical consequences?
+HIST-05	HIST	Describe the events leading to the partition of India in 1947.
+ENG-01	ENG	Explain the difference between RISC and CISC processor architectures.
+ENG-02	ENG	What is the purpose of a phase-locked loop PLL in digital circuit design?
+ENG-03	ENG	Describe how a transformer works and derive the turns ratio voltage equation.
+ENG-04	ENG	What is the difference between synchronous and asynchronous digital logic?
+ENG-05	ENG	Explain the concept of impedance matching in RF circuit design.
+GEN-01	GEN	What is the difference between machine learning and deep learning?
+GEN-02	GEN	Explain the concept of entropy in thermodynamics and information theory.
+GEN-03	GEN	What are three major arguments for and against nuclear energy as a solution to climate change?
+GEN-04	GEN	What is the Turing Test and what are its main criticisms?
+GEN-05	GEN	Explain the difference between correlation and causation with a concrete example.
