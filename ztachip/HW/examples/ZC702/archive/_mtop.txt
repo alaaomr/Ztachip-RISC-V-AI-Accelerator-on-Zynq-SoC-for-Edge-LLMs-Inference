@@ -1,0 +1,57 @@
+=== where m_top is used (the model data base pointer) ===
+59:    m_top = 0;
+120:    m_top = 0;
+127:    m_top = (uint8_t *)((((size_t)m_buf+BYTE_ALIGNMENT-1)/BYTE_ALIGNMENT)*BYTE_ALIGNMENT);
+128:    p = (uint8_t*)m_top;
+131:    m_top += sizeof(ZUF_HEADER);
+152:    m_top = (uint8_t *)((((size_t)m_buf+BYTE_ALIGNMENT-1)/BYTE_ALIGNMENT)*BYTE_ALIGNMENT);
+153:    sz=NetTftpDownload(0x0a0a0a0a,(char *)fname,m_top,size,true);
+158:    m_top += sizeof(ZUF_HEADER);
+305:    item = m_top;
+
+=== where m_buf is used ===
+60:    m_buf = 0;
+68:    if (m_buf)
+69:        free(m_buf);
+116:    if (m_buf)
+117:        free(m_buf);
+119:    m_buf = 0;
+126:    m_buf = (uint8_t*)malloc(sz+2*BYTE_ALIGNMENT);
+127:    m_top = (uint8_t *)((((size_t)m_buf+BYTE_ALIGNMENT-1)/BYTE_ALIGNMENT)*BYTE_ALIGNMENT);
+151:    m_buf = (uint8_t *)malloc(size+256);
+152:    m_top = (uint8_t *)((((size_t)m_buf+BYTE_ALIGNMENT-1)/BYTE_ALIGNMENT)*BYTE_ALIGNMENT);
+168:    if (m_buf)
+169:        free(m_buf);
+170:    m_buf = 0; 
+
+=== findKey (how readers walk the model) ===
+59:    m_top = 0;
+120:    m_top = 0;
+127:    m_top = (uint8_t *)((((size_t)m_buf+BYTE_ALIGNMENT-1)/BYTE_ALIGNMENT)*BYTE_ALIGNMENT);
+128:    p = (uint8_t*)m_top;
+131:    m_top += sizeof(ZUF_HEADER);
+152:    m_top = (uint8_t *)((((size_t)m_buf+BYTE_ALIGNMENT-1)/BYTE_ALIGNMENT)*BYTE_ALIGNMENT);
+153:    sz=NetTftpDownload(0x0a0a0a0a,(char *)fname,m_top,size,true);
+158:    m_top += sizeof(ZUF_HEADER);
+298:bool ZUF::findKey(const char* key,ZUF_CONFIG_ELE &ele) {
+305:    item = m_top;
+337:bool ZUF::ReadItemU32(const char* key, uint32_t& v) {
+340:    if (!findKey(key, ele)) {
+355:bool ZUF::ReadItemFloat(const char* key, float& v) {
+358:    if (!findKey(key, ele)) {
+373:bool ZUF::ReadItemBFLOAT(const char* key, float16_t& v) {
+376:    if (!findKey(key, ele)) {
+391:bool ZUF::ReadItemFP16(const char* key, float16_t& v) {
+394:    if (!findKey(key, ele)) {
+409:bool ZUF::ReadItemString(const char* key,char **str) {
+412:    if (!findKey(key, ele)) {
+427:bool ZUF::ReadArrayU8(const char *key, uint32_t &arraySize, uint8_t **array) {
+430:    if (!findKey(key, ele)) {
+443:bool ZUF::ReadArrayFloat(const char* key, uint32_t& arraySize, float** array) {
+446:    if (!findKey(key, ele)) {
+460:bool ZUF::ReadArrayBfloat(const char* key, uint32_t& arraySize, float16_t** array) {
+463:    if (!findKey(key, ele)) {
+477:bool ZUF::ReadArrayFP16(const char* key, uint32_t& arraySize, float16_t** array) {
+480:    if (!findKey(key, ele)) {
+494:bool ZUF::ReadArrayString(const char* key,uint32_t &arraySize,char **array) {
+497:    if (!findKey(key, ele)) {

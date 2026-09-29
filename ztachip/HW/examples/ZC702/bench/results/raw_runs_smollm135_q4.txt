@@ -1,0 +1,10 @@
+===RUN	1	MATH-01	MATH
+PROMPT	What is the derivative of f(x) = x^3 * sin(x)? Show your work step by step.
+OUTPUT_BEGIN
+What is the derivative of f(x) = x^3 * sin(x)? Show your work step by step.
+
+To find the derivative of f(x) = x^3 * sin(x), we can start by using the fact that the derivative of a complex number is the complex number itself, and the derivative of a product is the product of the derivatives. Ä
+First, we notice that the derivative of x^3 is indeed x^3, and the derivative of sin(x) is cos(x). We can rewrite sin(x) as cos(x/2). Then, the derivative of x^3 is (x^3)/3. Ä
+Now, we can use the fact that the derivative of sin(u) is sin(u)/u. We can rewrite sin(u) as sin(u)/u^2. Then, the derivative of u is u^2. So, the derivative of u is u^2.
+
+OUTPUT_END

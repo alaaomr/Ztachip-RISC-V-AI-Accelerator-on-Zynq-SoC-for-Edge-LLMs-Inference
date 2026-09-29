@@ -1,0 +1,199 @@
+==============================================================================
+LEARNING RESOURCES — ztachip ZC702 Graduation Project
+Curated video lectures and reading material to understand the work done so far.
+Created: 2026-05-29 for Eslam Elsayed
+==============================================================================
+
+These resources are organized by topic, ordered by priority for understanding
+the work we've done on porting ztachip to Zynq ZC702 and running an LLM on it.
+
+I'm naming the channels/series rather than dropping URLs — just search them on
+YouTube or Google.
+
+
+------------------------------------------------------------------------------
+1. FOUNDATION — Digital design + Verilog/VHDL refresher
+------------------------------------------------------------------------------
+Why: Helps you read the RTL files we've been touching (main_zc702.v,
+mem64.vhd, etc.).
+
+  - Nandland (Russell Merrick)
+      "Verilog Tutorial" playlist. Plain English, breadboard-style
+      explanations of registers, FSMs, FIFOs.
+
+  - VLSI Academy
+      VHDL fundamentals if you prefer VHDL.
+
+  - ZipCPU blog by Dan Gisselquist
+      Text + occasional videos. Best free resource on writing real RTL.
+
+
+------------------------------------------------------------------------------
+2. ZYNQ + VIVADO + BLOCK DESIGN
+------------------------------------------------------------------------------
+Why: Directly maps to what we did with zynq_ps_bd.tcl and
+create_project_zc702.tcl.
+
+  - Adam Taylor's "MicroZed Chronicles"
+      Hundreds of short Zynq articles + videos. He covers PS7 configuration,
+      FCLK, DDR, MIO mapping — exactly the stuff in our BD script.
+
+  - Digilent FPGA tutorials
+      They make Arty/Zedboard. Their "Getting Started with Vivado IP
+      Integrator" series shows block design clicks step by step.
+
+  - Xilinx (AMD) official YouTube channel
+      Search for "Vivado Quick Take" playlists. Short, focused, authoritative.
+
+
+------------------------------------------------------------------------------
+3. AXI PROTOCOL — critical (we used HP0 AXI3 for DMA)
+------------------------------------------------------------------------------
+Why: Understand this and S_AXI_HP0 in our design stops being a mystery.
+
+  - "AXI Basics" by Mohammad Tahghighi
+      Clear YouTube playlist covering AXI4-Lite, AXI4-Full, and AXI3
+      differences (which matters for us!).
+
+  - Sandeep Lal's "Mastering AXI Protocol" series
+      Deeper dive.
+
+  - Xilinx WP 1037 "AXI Reference Guide"
+      PDF, not video, but the bible for protocol details.
+
+
+------------------------------------------------------------------------------
+4. RISC-V SOFT CORES (VexRiscv is one of these)
+------------------------------------------------------------------------------
+
+  - Onur Mutlu's "Digital Design and Computer Architecture" course at
+    ETH Zurich
+      Entire course free on YouTube. The single best CS architecture course
+      I'd recommend.
+
+  - CNLohr YouTube channel
+      Search "RISC-V on FPGA". Fun hands-on series synthesizing tiny RISC-V
+      cores.
+
+  - VexRiscv's own GitHub README
+      Architecture diagrams worth reading (not video, but short).
+
+
+------------------------------------------------------------------------------
+5. SIMULATION, TESTBENCHES & STATIC TIMING ANALYSIS
+------------------------------------------------------------------------------
+Why: Explains what we saw in xsim and why our WNS = -1.449 ns mattered.
+
+  - Sunburst Design (Cliff Cummings) "FSM coding" lectures
+      Classic, available on YouTube.
+
+  - VLSI Pro / VLSI Concepts
+      Great "STA Made Easy" playlist explaining setup/hold, WNS, WHS in
+      beginner terms.
+
+  - Xilinx YouTube "Vivado Timing Closure" series
+      Practical Vivado-specific tips.
+
+
+------------------------------------------------------------------------------
+6. TRANSFORMERS / LLM ARCHITECTURE
+------------------------------------------------------------------------------
+Why: This is what the 8 LLM kernels we verified are actually doing inside
+a model (sine, cosine, RoPE, RMS, softmax, etc.)
+
+  - Andrej Karpathy: "Let's build GPT: from scratch, in code, spelled out"
+      2-hour YouTube video. THE SINGLE MOST IMPORTANT RESOURCE ON THIS LIST.
+      After watching it you'll understand exactly why test_llm_rms,
+      test_llm_softmax, test_llm_rope matter.
+
+  - 3Blue1Brown's "Neural Networks" playlist
+      Especially Chapter 5 "But what is a GPT?" and Chapter 6 "Attention".
+      Beautifully animated.
+
+  - Jay Alammar's blog "The Illustrated Transformer"
+      Not video, but the most-recommended visual explainer ever.
+
+  - MIT 6.S191 "Introduction to Deep Learning"
+      Free YouTube course, updated yearly. Has a transformer lecture.
+
+
+------------------------------------------------------------------------------
+7. QUANTIZATION (for Level 4 — converting SmolLM2 to ZUF)
+------------------------------------------------------------------------------
+
+  - "Hugging Face NLP Course" Chapter 8
+      Covers GGUF and quantization basics.
+
+  - Maarten Grootendorst "Visual Guide to Quantization"
+      Search YouTube. Excellent.
+
+
+------------------------------------------------------------------------------
+8. FPGA-BASED AI ACCELERATORS — the big picture
+------------------------------------------------------------------------------
+Why: Understand WHY we're doing this — context for your graduation defense.
+
+  - Berkeley CS294 "Hardware for Machine Learning"
+      Free lectures on YouTube. Covers DSAs (Domain-Specific Architectures)
+      like ztachip.
+
+  - Stanford CS217 "Hardware Accelerators for Machine Learning"
+      Kunle Olukotun, free YouTube.
+
+  - Hot Chips / MICRO conference talks on YouTube
+      Search "Hot Chips ML accelerator". Industry talks on Google TPU,
+      NVIDIA, Cerebras. Inspirational.
+
+
+==============================================================================
+SUGGESTED WATCH ORDER (a few weeks)
+==============================================================================
+
+Week 1 : Nandland Verilog basics + Adam Taylor MicroZed first 5 articles
+Week 2 : Mohammad Tahghighi AXI Basics (full playlist)
+Week 3 : Onur Mutlu lectures 1-10 (skim the rest)
+Week 4 : Karpathy "Let's build GPT" + 3Blue1Brown attention episode
+Week 5 : VLSI Pro STA + Berkeley CS294 first 3 lectures
+
+
+==============================================================================
+IF YOU HAVE ONLY ONE WEEKEND
+==============================================================================
+
+Watch just these two — they give you 80% of the conceptual vocabulary we've
+been using:
+
+  1. Karpathy "Let's build GPT from scratch"  (~2 hours)
+       For the LLM side.
+
+  2. Mohammad Tahghighi AXI Basics part 1+2   (~1 hour)
+       For the FPGA side.
+
+
+==============================================================================
+HOW THIS MAPS TO OUR PROJECT WORK
+==============================================================================
+
+When you read about... | You'll understand what we did in...
+-----------------------+------------------------------------------------
+PS vs PL on Zynq       | zynq_ps_bd.tcl (we kept VexRiscv in PL)
+FCLK clocks            | The 4 PS clocks (125/250/24/25 MHz)
+S_AXI_HP0 port         | How ztachip DMA reaches PS DDR3
+AXI3 vs AXI4           | Why we don't need a protocol converter
+Block Design (BD)      | Why we have a zynq_system.bd file
+Synthesis utilization  | The 88.7% LUT report we saw
+WNS / setup time       | Why timing failed at 125 MHz (-1.449 ns)
+RTL testbench          | Our HW/simulation/main.vhd
+Soft-core RISC-V       | VexRiscv that we kept in fabric
+DDR3 + ZUF model file  | The 67 MB SmolLM2.ZUF we'll preload
+Attention / RoPE       | test_llm_rope kernel we verified
+RMS normalization      | test_llm_rms kernel we verified
+Softmax                | test_llm_softmax kernel we verified
+Q4 quantization        | The format SmolLM2 uses (4-bit weights)
+DSA (domain-specific   | What ztachip IS — designed only for tensor ops
+architecture)          |
+
+
+==============================================================================
+END OF FILE
+==============================================================================

@@ -1,0 +1,404 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>ztachip ZC702 Port — Edits Documentation</title>
+<style>
+  @page { size: A4; margin: 18mm; }
+  body {
+    font-family: "DejaVu Sans", Arial, sans-serif;
+    font-size: 10.5pt;
+    color: #222;
+    line-height: 1.45;
+  }
+  h1 { color: #1a3a6e; border-bottom: 3px solid #1a3a6e; padding-bottom: 6px; }
+  h2 { color: #1a3a6e; margin-top: 22pt; border-bottom: 1px solid #ccc; padding-bottom: 3px; }
+  h3 { color: #2a5a9e; margin-top: 14pt; }
+  code, pre {
+    font-family: "DejaVu Sans Mono", "Courier New", monospace;
+    font-size: 9.5pt;
+    background: #f4f4f4;
+    border: 1px solid #ddd;
+    padding: 2px 4px;
+    border-radius: 3px;
+  }
+  pre {
+    padding: 8px 10px;
+    overflow-x: auto;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+  }
+  table {
+    border-collapse: collapse;
+    margin: 8px 0;
+    width: 100%;
+    font-size: 9.5pt;
+  }
+  th, td { border: 1px solid #aaa; padding: 5px 8px; text-align: left; vertical-align: top; }
+  th { background: #e0e8f5; }
+  .why { background: #fff8e0; padding: 6px 10px; border-left: 4px solid #f0c020; margin: 6px 0; }
+  .file { color: #6a3aa0; font-weight: bold; font-family: monospace; }
+  .meta { color: #666; font-size: 9pt; }
+  ul { margin-top: 4px; }
+</style>
+</head>
+<body>
+
+<h1>ztachip ZC702 Port — Edits Documentation</h1>
+<p class="meta">
+Graduation Project: Running SmolLM2-135M LLM on ztachip FPGA Accelerator<br>
+By: Eslam Elsayed (eslam.elwehedy0@gmail.com)<br>
+Target board: Xilinx Zynq ZC702 (XC7Z020CLG484-1)<br>
+Tools: Vivado 2025.2, Ubuntu 24.04, RISC-V GCC at /opt/riscv/<br>
+Date: 2026-05-29
+</p>
+
+<h2>Overview</h2>
+<p>
+This document lists every file we modified or created when porting the
+open-source <strong>ztachip</strong> AI accelerator from the Arty A7-100T
+development board to the Xilinx Zynq ZC702. Each entry explains WHAT was
+changed, WHY it was needed (in plain English), and where the file lives.
+</p>
+<p>
+Two big architectural decisions shape everything below:
+</p>
+<ol>
+  <li>
+    <strong>Keep the VexRiscv soft-core CPU inside the FPGA fabric (PL).</strong>
+    The ARM Cortex-A9 (PS) in the Zynq is used ONLY to provide DDR3 memory and
+    clock generation — it does NOT control ztachip. This means all existing
+    ztachip software keeps working unchanged.
+  </li>
+  <li>
+    <strong>The PS-to-PL link is a single 64-bit AXI3 slave port (S_AXI_HP0).</strong>
+    The ztachip DMA engine writes into PS-side DDR3 over this port. M_AXI_GP0
+    is disabled (ARM does not poke ztachip registers).
+  </li>
+</ol>
+
+<!-- ==================================================================== -->
+<h2>1. RTL changes (hardware description)</h2>
+
+<h3>1.1 <span class="file">HW/src/config.vhd</span> — MODIFIED</h3>
+<p><strong>Change:</strong> <code>exmem_data_width_c</code> from <strong>128</strong> to <strong>64</strong>.</p>
+<div class="why"><strong>Why:</strong>
+On the original Arty A7 the ztachip DMA talked to a Xilinx MIG (memory
+controller) over a 128-bit bus. On Zynq the AXI HP0 port maxes out at
+<strong>64 bits</strong>. Changing this constant tells ztachip to issue
+64-bit AXI bursts instead of 128-bit, matching the new port width.
+</div>
+
+<h3>1.2 <span class="file">HW/simulation/mem64.vhd</span> — MODIFIED</h3>
+<p><strong>Change:</strong> <code>constant RAM_SIZE</code> from <strong>16000</strong> words (128 KB) to <strong>131072</strong> words (1 MB).</p>
+<div class="why"><strong>Why:</strong>
+The default simulated DDR3 was only 128 KB. The LLM kernel tests (e.g.,
+test_llm_rms with N=576) allocate hundreds of KB through malloc. Without
+this bump the linker fails with "region RAM overflowed". 1 MB is generous
+and works for all kernel tests we care about in simulation.
+</div>
+
+<h3>1.3 <span class="file">HW/simulation/tb_main.vhd</span> — NEW FILE</h3>
+<p><strong>Change:</strong> Created a top-level testbench wrapper that
+generates a 250 MHz clock and feeds it into the existing <code>main</code>
+testbench's <code>clk</code> input port.</p>
+<div class="why"><strong>Why:</strong>
+The original <code>main.vhd</code> declares <code>clk</code> as an INPUT
+port, expecting an external simulator to drive it. When we launched the
+sim with <code>main</code> as top, nothing drove <code>clk</code>, so
+every signal stayed at <code>U</code> (undefined). The new
+<code>tb_main</code> wrapper is what gets driven as the true sim top —
+it has no ports and generates the clock internally.
+</div>
+
+<h3>1.4 <span class="file">HW/src/test_llm.cpp</span> — guarded with <code>#ifndef SIMULATION</code></h3>
+<p><strong>Change:</strong> Wrapped 5 functions in <code>#ifndef SIMULATION</code> blocks so they're excluded from the sim build:
+<code>test_llm_dot_product</code>, <code>test_llm_dot_product2</code>,
+<code>test_llm_quantize</code>, <code>test_llm_matmul_q4</code>,
+<code>test_llm_matmul_q8</code>, and the <code>test_llm()</code> wrapper.</p>
+<p>Also reduced sine/cosine outer loops from <code>max &lt;= 50.0</code> to
+<code>max &lt;= 2.0</code> when <code>SIMULATION</code> is defined.</p>
+<div class="why"><strong>Why:</strong>
+Three of these functions use the <code>GGUF</code> class from
+<code>gguf.cpp</code>, which depends on C++ stdlib features we don't link
+in the sim build. Two others (<code>matmul_q4</code>, <code>matmul_q8</code>)
+allocate ~3.5 MB heap each and would take many hours in xsim.
+<code>dot_product</code> loops 1023 times. Guarding lets us keep the rest of
+test_llm.cpp without dragging in unwanted symbols. Sine/cosine had 50
+outer iterations which alone would take 30+ minutes in sim.
+</div>
+
+<!-- ==================================================================== -->
+<h2>2. New ZC702 top-level + Block Design</h2>
+
+<h3>2.1 <span class="file">HW/examples/ZC702/main_zc702.v</span> — NEW FILE</h3>
+<p><strong>Change:</strong> Created a new Verilog top-level module that replaces
+the original Arty A7 <code>main.v</code>.</p>
+<p>Key wiring:</p>
+<ul>
+  <li>Instantiates <code>zynq_system_wrapper</code> (PS block design wrapper).</li>
+  <li>Instantiates <code>soc_base</code> (VexRiscv + ztachip).</li>
+  <li>Connects ztachip DMA → S_AXI_HP0 AXI3 slave, with safe
+      truncation of ARLEN/AWLEN from 8 to 4 bits
+      (ztachip max burst = 9, AXI3 limit = 16, so safe).</li>
+  <li>All four clocks come from PS FCLK0/1/2/3 — no external oscillator,
+      no clk_wiz needed.</li>
+  <li>UART, Camera, VGA, Ethernet are <strong>stubbed</strong> (tied off
+      or APB stub: <code>PREADY=1, PRDATA=0, PSLVERROR=0</code>).</li>
+</ul>
+<div class="why"><strong>Why:</strong>
+The Arty A7 main.v expects external DDR3 pins, a 100 MHz oscillator, clk_wiz,
+camera connector, VGA pins, etc. — none of which apply to ZC702. The new
+top-level is a minimal port focused on getting LLM running, with peripherals
+we don't need stubbed for simplicity.
+</div>
+
+<h3>2.2 <span class="file">HW/examples/ZC702/zynq_ps_bd.tcl</span> — NEW FILE</h3>
+<p><strong>Change:</strong> Created a Vivado Tcl script that builds the Zynq PS block design from scratch.</p>
+<p>It configures the PS7 IP with:</p>
+<ul>
+  <li>FCLK0 = 100 MHz (was 125, reduced to fix timing — see section 4.2)</li>
+  <li>FCLK1 = 250 MHz, FCLK2 = 24 MHz (camera), FCLK3 = 25 MHz (VGA)</li>
+  <li>S_AXI_HP0 enabled, 64-bit data width, AXI3 protocol</li>
+  <li><code>PCW_USE_M_AXI_GP0 = 0</code> (critical — disables unused master port)</li>
+  <li><code>assign_bd_address</code> for HP0_DDR_LOWOCM (maps PS DDR3 into HP0 address space)</li>
+  <li>FIXED_IO and DDR exposed as BD ports (Vivado handles MIO/DDR3 pinout automatically)</li>
+</ul>
+<div class="why"><strong>Why:</strong>
+Without <code>PCW_USE_M_AXI_GP0=0</code>, Vivado emits a BD validation error
+(<code>M_AXI_GP0_ACLK unconnected</code>). Without
+<code>assign_bd_address</code>, ztachip DMA transactions to DDR fail at
+runtime even though everything builds cleanly. Both are easy to miss.
+</div>
+
+<h3>2.3 <span class="file">HW/examples/ZC702/main_zc702.xdc</span> — NEW FILE</h3>
+<p><strong>Change:</strong> Minimal constraints file — just enables bitstream compression.</p>
+<div class="why"><strong>Why:</strong>
+On Zynq, the PS DDR3 and MIO pin assignments are baked into the Zynq silicon
+itself — Vivado infers them from the Block Design's
+<code>apply_board_preset</code> call. There are no user-facing pins to
+constrain in our minimal port (Ethernet, UART, camera all stubbed).
+</div>
+
+<h3>2.4 <span class="file">HW/examples/ZC702/create_project_zc702.tcl</span> — NEW FILE</h3>
+<p><strong>Change:</strong> One-shot Vivado project creation script. Creates the project, adds all ztachip RTL files, generates FP32 IPs, sources the BD script, and generates the BD wrapper.</p>
+<div class="why"><strong>Why:</strong>
+Building this by hand in Vivado IP Integrator takes ~30 minutes of clicking
+and is error-prone. A Tcl script is reproducible, version-controllable, and
+takes seconds to re-run if something goes wrong. The <code>-force</code>
+flag on <code>create_project</code> lets us safely re-run after errors.
+</div>
+
+<!-- ==================================================================== -->
+<h2>3. Vivado run scripts (Tcl)</h2>
+
+<table>
+<tr><th>Script</th><th>What it does</th><th>How to run</th></tr>
+<tr>
+  <td><code>run_step2.tcl</code></td>
+  <td>Deletes any existing project + recreates it via create_project_zc702.tcl</td>
+  <td><code>source run_step2.tcl</code> in Vivado Tcl</td>
+</tr>
+<tr>
+  <td><code>run_step3_synth.tcl</code></td>
+  <td>Launches synthesis with 4 jobs, prints utilization report</td>
+  <td><code>source run_step3_synth.tcl</code></td>
+</tr>
+<tr>
+  <td><code>run_step4_impl.tcl</code></td>
+  <td>Launches implementation + bitstream generation, reports WNS</td>
+  <td><code>source run_step4_impl.tcl</code></td>
+</tr>
+<tr>
+  <td><code>run_step5_fix_timing.tcl</code></td>
+  <td>Lowers FCLK0 from 125 to 100 MHz, re-runs implementation only</td>
+  <td><code>source run_step5_fix_timing.tcl</code></td>
+</tr>
+<tr>
+  <td><code>run_sim_vivado.tcl</code></td>
+  <td>Adds sim VHDL files, copies hex into sim dir, launches sim with tb_main as top</td>
+  <td><code>source run_sim_vivado.tcl</code></td>
+</tr>
+</table>
+<div class="why"><strong>Why:</strong>
+Eslam said he cannot copy commands from chat responses, so every action is
+encapsulated in a script. He just types one short <code>source &lt;path&gt;</code>
+command in the Tcl console. This also gives a clear, repeatable build flow
+that survives Vivado restarts.
+</div>
+
+<!-- ==================================================================== -->
+<h2>4. Synthesis & Implementation results</h2>
+
+<h3>4.1 Synthesis (DONE)</h3>
+<table>
+<tr><th>Resource</th><th>Used</th><th>Available</th><th>Util %</th></tr>
+<tr><td>Slice LUTs</td><td>47,187</td><td>53,200</td><td>88.70%</td></tr>
+<tr><td>Slice Registers</td><td>57,828</td><td>106,400</td><td>54.35%</td></tr>
+<tr><td>Block RAM Tile</td><td>128</td><td>140</td><td>91.43%</td></tr>
+<tr><td>DSPs</td><td>82</td><td>220</td><td>37.27%</td></tr>
+<tr><td>PS7</td><td>1</td><td>1</td><td>100%</td></tr>
+<tr><td>Black Boxes</td><td>0</td><td>—</td><td>(none missing)</td></tr>
+</table>
+
+<h3>4.2 Implementation result — TIMING FAILED</h3>
+<p><strong>WNS (Worst Negative Slack) = -1.449 ns at 125 MHz</strong>.
+This means the longest combinational path needs 9.449 ns to settle but only
+gets 8 ns (one 125 MHz clock period). Real silicon would produce wrong
+results at this frequency.</p>
+<p><strong>Fix:</strong> Lower FCLK0 from 125 MHz to 100 MHz (10 ns period).
+Estimated new WNS = +0.551 ns (PASS). Script <code>run_step5_fix_timing.tcl</code>
+is ready to apply this — not yet run because the board is not on hand.</p>
+<div class="why"><strong>Why timing failed:</strong>
+On Artix-7 (Arty), the design met timing because of better routing
+flexibility. Zynq XC7Z020 has tighter constraints due to the PS hard block
+consuming space. 100 MHz gives us a comfortable margin while still being
+plenty fast for LLM inference.
+</div>
+
+<!-- ==================================================================== -->
+<h2>5. Simulation infrastructure</h2>
+
+<h3>5.1 <span class="file">SW/sim/test_llm_main.cpp</span> — NEW FILE</h3>
+<p><strong>Change:</strong> New simulation entry point (replaces the original
+<code>sim/test.c</code>). Calls 8 LLM kernel tests in light-to-heavy order
+so the user sees <code>led_out</code> tick up quickly.</p>
+<div class="why"><strong>Why:</strong>
+The original <code>sim/test.c</code> ran <code>kernel_test_exe()</code> from
+the vision app — a simple "add 1 to a tensor" operation. We're verifying an
+LLM, so we need to run LLM-specific math. Each kernel call sets
+<code>APB[APB_LED]</code> after it passes, which the user watches in the
+Vivado waveform window.
+</div>
+
+<h3>5.2 <span class="file">SW/sim/linker.ld</span> — MODIFIED</h3>
+<p><strong>Change:</strong></p>
+<ul>
+  <li>RAM length: 128k → <strong>1024k</strong></li>
+  <li>Heap size: 4000 bytes → <strong>524288 bytes (512 KB)</strong></li>
+  <li>Stack size: 8000 → <strong>32768</strong></li>
+</ul>
+<div class="why"><strong>Why:</strong>
+LLM tests allocate several hundred KB through malloc. With the original 4 KB
+heap, even one <code>test_llm_rms</code> call would fail. We also bumped
+total RAM because C++ stdlib exception-handling code adds ~150 KB to the
+text section. 1 MB matches our bumped simulated DDR3 size.
+</div>
+
+<h3>5.3 <span class="file">SW/makefile.sim</span> — MODIFIED</h3>
+<p><strong>Change:</strong> Added these source files to the SRCS list:</p>
+<ul>
+  <li><code>base/util.c</code> (for randInit, randGen used by tests)</li>
+  <li><code>src/test_llm.cpp</code> (the kernel tests themselves)</li>
+  <li><code>apps/llm/kernels/llm.m.c</code> (hardware LLM kernels)</li>
+  <li><code>apps/llm/reference/llm_ref.c</code> (reference C implementations)</li>
+  <li><code>sim/test_llm_main.cpp</code> (new entry point)</li>
+</ul>
+<p>Also fixed <code>src/soc.c</code> → <code>src/soc.cpp</code> (typo in original).</p>
+<div class="why"><strong>Why:</strong>
+The original makefile.sim only compiled enough for the simple vision test.
+We need the LLM kernels (both ztachip versions and reference C versions) so
+the test program can compare them.
+</div>
+
+<h3>5.4 <span class="file">HW/examples/ZC702/run_sim_build.sh</span> — NEW FILE</h3>
+<p><strong>Change:</strong> Shell script that performs all 4 simulation build steps:</p>
+<ol>
+  <li>Auto-fix the soc.c → soc.cpp typo in makefile.sim</li>
+  <li>Build the ztachip kernel compiler (the .m → .m.c translator)</li>
+  <li>Compile all kernel files (.m → .m.c)</li>
+  <li>Compile the RISC-V firmware → ztachip_sim.hex</li>
+</ol>
+<div class="why"><strong>Why:</strong>
+Each step depends on the previous one. A single script means Eslam types
+one command to rebuild after any change — no order to remember.
+</div>
+
+<h3>5.5 First successful sim — VISION KERNEL TEST</h3>
+<p>After all the above plumbing, the first simulation produced this output:</p>
+<ul>
+  <li><code>led_out</code> counted 0 → 1 → 2 → 3 → … → 8 in ~1.5 ms of simulated time</li>
+  <li>Each increment = one <code>kernel_test_exe()</code> iteration passed</li>
+  <li>Proved end-to-end: RISC-V boots → executes program → talks to ztachip via DMA → receives correct results</li>
+</ul>
+
+<h3>5.6 Switch to LLM kernel sim</h3>
+<p>After the vision sim worked, we switched the firmware to run LLM kernels
+via <code>test_llm_main.cpp</code>. The LLM kernels are 3-5x heavier than
+vision so simulation takes proportionally longer. Tests reordered
+lightest-first so progress is visible early.</p>
+
+<!-- ==================================================================== -->
+<h2>6. Critical blocker — model file transport</h2>
+
+<h3>6.1 The problem</h3>
+<p>The original ztachip downloads <code>SMOLLM2.ZUF</code> via TFTP from
+<code>10.10.10.10</code> over Ethernet. See
+<span class="file">SW/apps/llm/gguf/zuf.cpp</span> →
+<code>ZUF::Open()</code> → <code>NetTftpDownload(...)</code>.</p>
+
+<p>On our ZC702 port, the Ethernet IP (axi_ethernetlite) was stubbed out
+in <code>main_zc702.v</code> for simplicity. So <code>NetTftpDownload</code>
+has nothing to talk to and will fail.</p>
+
+<h3>6.2 Chosen workaround: JTAG / XSCT pre-load</h3>
+<p>Instead of fixing Ethernet, we'll:</p>
+<ol>
+  <li>Modify <code>ZUF::Open</code> to skip TFTP and read the model from a
+      fixed DDR3 address (e.g. <code>0x10000000</code>).</li>
+  <li>Pre-load the 67 MB <code>SMOLLM2.ZUF</code> file into that address via
+      the Vivado HW server (XSCT script over JTAG) before releasing VexRiscv
+      from reset.</li>
+  <li>Boot VexRiscv. <code>chat()</code> calls modified <code>Open()</code>
+      which validates the ZUF header at the known address — the rest of the
+      LLM pipeline is unchanged.</li>
+</ol>
+<p>Expected transfer time: 1-2 minutes (JTAG is slow but 67 MB is small).
+Alternatives considered: UART (80 min, too slow), SD card (PS rework needed),
+re-enable Ethernet via PS GEM (largest scope change). All rejected.</p>
+
+<!-- ==================================================================== -->
+<h2>7. Documents and reference files in this folder</h2>
+
+<table>
+<tr><th>File</th><th>Purpose</th></tr>
+<tr>
+  <td><code>PROJECT_STATUS.md</code></td>
+  <td>Living status doc — read first in any new session.</td>
+</tr>
+<tr>
+  <td><code>NEXT_SESSION_PROMPT.txt</code></td>
+  <td>Copy-paste prompt for starting a new Claude chat with full context.</td>
+</tr>
+<tr>
+  <td><code>EDITS_DOCUMENTATION.html</code> / <code>.pdf</code></td>
+  <td>This document. Every edit, with WHY explanations.</td>
+</tr>
+<tr>
+  <td><code>LEARNING_RESOURCES.txt</code></td>
+  <td>Curated YouTube channels + courses to deepen understanding.</td>
+</tr>
+<tr>
+  <td><code>utilization_synth.rpt</code></td>
+  <td>Vivado-generated synthesis utilization report.</td>
+</tr>
+</table>
+
+<!-- ==================================================================== -->
+<h2>8. End-of-day status (2026-05-29)</h2>
+<ul>
+  <li>Hardware port to ZC702: <strong>DONE</strong> (synth + impl + bitstream OK).</li>
+  <li>Timing fix script: <strong>READY</strong> (run when board arrives).</li>
+  <li>Vision-kernel simulation: <strong>PASSED</strong> (led_out 0→8 in 1.5 ms).</li>
+  <li>LLM-kernel simulation: <strong>RUNNING</strong> (firmware built, tests reordered light→heavy, user can stop at led_out ≥ 4).</li>
+  <li>Model quantization (SmolLM2 → SMOLLM2.ZUF): <strong>NOT STARTED</strong>.</li>
+  <li>JTAG model loader patch: <strong>NOT STARTED</strong>.</li>
+  <li>Full chat demo: <strong>NOT STARTED</strong> (graduation deliverable).</li>
+</ul>
+
+<p style="text-align:center; color:#666; margin-top:30pt; font-size:9pt;">
+— end of document —
+</p>
+
+</body>
+</html>

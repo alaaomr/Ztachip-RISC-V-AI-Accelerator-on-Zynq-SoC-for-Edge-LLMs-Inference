@@ -1,0 +1,48 @@
+NEXT SESSION PROMPT  (paste this to resume)  — created 2026-06-17
+====================================================================
+
+We're continuing my graduation project: porting the ztachip AI accelerator to a
+Xilinx Zynq ZC702 and running SmolLM2-135M. Status: THE LLM WORKS — the chatbot
+runs on VexRiscv+ztachip with the model JTAG-preloaded into DDR, and answers
+prompts at ~4.5 tok/s (~222 ms/token), measured by host wall-clock. We saved a
+restore point yesterday: git tag `phase1-llm-working-2026-06-17` (branch
+phase1-checkpoint), plus backups/ tarball + main.bin/vector.bin/main_zc702.bit.
+See ztachip/CHECKPOINT.md and your memory notes (project-llm-working,
+project-perf-timing, project-phase1-checkpoint).
+
+Reminders for you:
+- I'm a beginner: explain simply, and write commands into script files for me to
+  run as `bash <path>` (I can't copy long commands from chat).
+- Keep VexRiscv in PL; ARM PS only gives DDR+clocks. xsdb (not xsct) in 2025.2.
+- VexRiscv traps silently on unaligned word loads -> never use libc word-optimized
+  string fns on DDR model bytes (we fixed strcmp with byte-wise compares).
+- On-chip timers are DEAD in this bitstream (APB timer reads 0; mcycle not wired
+  to CSR read). We use HOST wall-clock timing for now.
+
+PHASE-2 GOAL: make the SAME LLM faster on the SAME chip, and figure out what to
+edit to run LARGER LLMs. Decode is expected MEMORY-BOUND (every token streams all
+weights from DDR), so likely wins are INT4 quantization, weight prefetch/double-
+buffering, and more DDR bandwidth.
+
+WHAT I WANT TO DO NEXT (pick up here):
+Build real on-silicon per-block profiling for ztachip. Plan we agreed on:
+  1. (cheap, no synthesis FIRST) Map ztachip's weight-streaming dataflow
+     (DDR -> dp -> pcore) and pin down exactly which busy/valid/stall signals to
+     count.
+  2. Build a PMU (performance monitoring unit) as a new APB peripheral (free id 7)
+     with: global cycle counter (also fixes the dead timer) + pcore busy +
+     FPU busy + DDR read/write busy + DDR read/write beats + DDR stall. Tap
+     pcore tid_valid / dp task_busy / fpu_busy / ddr_tx,rx AXI valid-ready.
+  3. Add per-kernel snapshots in llm.cpp forward() (matmul/attention/rmsnorm/...).
+  4. Re-synthesize the bitstream (~1-2h) and measure: per-kernel cycles, pcore
+     utilization %, DDR bandwidth + stall %, INT4 vs INT8 -> confirm memory-bound
+     and build a measured roofline.
+Also want a PMBus rail-power read (real watts) to pair with PMU for GOPS/W.
+
+To resume the board: power on (LEDs DS2+greens on, DS14 off), then
+  board powered & model still in DDR:  bash HW/examples/ZC702/run_resume_fw.sh
+  board was OFF (DDR wiped):           bash HW/examples/ZC702/run_board_day.sh
+Wait for ">", type a short question, watch the [HOST PERF] line.
+
+Start by confirming the plan and doing step 1 (map the dataflow / signals) since
+it needs no synthesis.

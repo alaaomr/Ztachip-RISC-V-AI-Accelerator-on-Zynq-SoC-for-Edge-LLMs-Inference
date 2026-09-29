@@ -1,0 +1,153 @@
+############ FULL linker.ld ############
+     1	/*
+     2	This is free and unencumbered software released into the public domain.
+     3	
+     4	Anyone is free to copy, modify, publish, use, compile, sell, or
+     5	distribute this software, either in source code form or as a compiled
+     6	binary, for any purpose, commercial or non-commercial, and by any
+     7	means.
+     8	*/
+     9	OUTPUT_FORMAT("elf32-littleriscv", "elf32-littleriscv", "elf32-littleriscv")
+    10	OUTPUT_ARCH(riscv)
+    11	ENTRY(crtStart)
+    12	
+    13	MEMORY {
+    14	  RAM      (rwx): ORIGIN = 0x00004000, LENGTH = 255m
+    15	  TCM      (rwx): ORIGIN = 0x00000000, LENGTH = 16k
+    16	}
+    17	
+    18	_stack_size = 8000;
+    19	_heap_size = 200000000;
+    20	
+    21	SECTIONS {
+    22	
+    23	  ._vector ORIGIN(TCM): {
+    24	    *crt.o(.start_jump);
+    25	    */base/task.o(.text);
+    26	  } > TCM 
+    27	
+    28	  ._stack (NOLOAD):
+    29	  {
+    30	    . = ALIGN(16);
+    31	    PROVIDE (_stack_end = .);
+    32	    . = . + _stack_size;
+    33	    . = ALIGN(16);
+    34	    PROVIDE (_stack_start = .);
+    35	  } > TCM 
+    36	
+    37	  .TCM_DATA (NOLOAD) :
+    38	  {
+    39	    . = ALIGN(4);
+    40	    *(.tcm_data)
+    41	    *(.tcm_data.*)
+    42	    . = ALIGN(4);
+    43	  } > TCM
+    44	
+    45	  .bss (NOLOAD) : {
+    46	    . = ALIGN(4);
+    47	    /* This is used by the startup in order to initialize the .bss secion */
+    48	    _bss_start = .;
+    49	    *(.sbss*)
+    50	    *(.gnu.linkonce.sb.*)
+    51	    *(.bss .bss.*)
+    52	    *(.gnu.linkonce.b.*)
+    53	    *(COMMON)
+    54	    . = ALIGN(4);
+    55	    _bss_end = .;
+    56	  } > RAM 
+    57	
+    58	  ._user_heap (NOLOAD):
+    59	  {
+    60	    . = ALIGN(16);
+    61	    PROVIDE ( end = . );
+    62	    PROVIDE ( _end = . );
+    63	    PROVIDE ( _heap_start = .);
+    64	    . = . + _heap_size;
+    65	    . = ALIGN(8);
+    66	    PROVIDE ( _heap_end = .);
+    67	  } > RAM
+    68	
+    69	  .data :
+    70	  {
+    71	    *(.rdata)
+    72	    *(.rodata .rodata.*)
+    73	    *(.gnu.linkonce.r.*)
+    74	    *(.data .data.*)
+    75	    *(.gnu.linkonce.d.*)
+    76	    . = ALIGN(8);
+    77	    PROVIDE( __global_pointer$ = . + 0x800 );
+    78	    *(.sdata .sdata.*)
+    79	    *(.gnu.linkonce.s.*)
+    80	    . = ALIGN(8);
+    81	    *(.srodata.cst16)
+    82	    *(.srodata.cst8)
+    83	    *(.srodata.cst4)
+    84	    *(.srodata.cst2)
+    85	    *(.srodata .srodata.*)
+    86	  } > RAM
+    87	
+    88	  .rodata         :
+    89	  {
+    90	    *(.rdata)
+    91	    *(.rodata .rodata.*)
+    92	    *(.gnu.linkonce.r.*)
+    93	  } > RAM
+    94	
+    95	  .noinit (NOLOAD) : {
+    96	    . = ALIGN(4);
+    97	    *(.noinit .noinit.*)
+    98	    . = ALIGN(4);
+    99	  } > RAM
+   100	
+   101	  .memory : {
+   102	    *(.text);
+   103	    end = .;
+   104	  } > RAM
+   105	
+   106	  .ctors          :
+   107	  {
+   108	    . = ALIGN(4);
+   109	    _ctors_start = .;
+   110	    KEEP(*(.init_array*))
+   111	    KEEP (*(SORT(.ctors.*)))
+   112	    KEEP (*(.ctors))
+   113	    . = ALIGN(4);
+   114	    _ctors_end = .;
+   115	    PROVIDE ( END_OF_SW_IMAGE = . );
+   116	  } > RAM
+   117	}
+
+############ heap/end symbols ############
+14:  RAM      (rwx): ORIGIN = 0x00004000, LENGTH = 255m
+15:  TCM      (rwx): ORIGIN = 0x00000000, LENGTH = 16k
+18:_stack_size = 8000;
+19:_heap_size = 200000000;
+23:  ._vector ORIGIN(TCM): {
+28:  ._stack (NOLOAD):
+30:    . = ALIGN(16);
+31:    PROVIDE (_stack_end = .);
+32:    . = . + _stack_size;
+33:    . = ALIGN(16);
+34:    PROVIDE (_stack_start = .);
+39:    . = ALIGN(4);
+42:    . = ALIGN(4);
+46:    . = ALIGN(4);
+54:    . = ALIGN(4);
+55:    _bss_end = .;
+58:  ._user_heap (NOLOAD):
+60:    . = ALIGN(16);
+61:    PROVIDE ( end = . );
+62:    PROVIDE ( _end = . );
+63:    PROVIDE ( _heap_start = .);
+64:    . = . + _heap_size;
+65:    . = ALIGN(8);
+66:    PROVIDE ( _heap_end = .);
+76:    . = ALIGN(8);
+77:    PROVIDE( __global_pointer$ = . + 0x800 );
+80:    . = ALIGN(8);
+96:    . = ALIGN(4);
+98:    . = ALIGN(4);
+108:    . = ALIGN(4);
+113:    . = ALIGN(4);
+114:    _ctors_end = .;
+115:    PROVIDE ( END_OF_SW_IMAGE = . );

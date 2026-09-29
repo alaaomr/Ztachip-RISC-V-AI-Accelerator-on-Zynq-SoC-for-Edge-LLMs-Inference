@@ -1,0 +1,12 @@
+=== config.h memory-related defines ===
+24:#ifndef _BASE_CONFIG_H_
+25:#define _BASE_CONFIG_H_
+34:#define NUM_PCORE 4  
+36://#define NUM_PCORE 8  
+39:// Max tensor size in log2
+40:// Max tensor size = 2**MAX_TENSOR_LOG2_SIZE
+41:// This must match MAX_TENSOR_LOG2_SIZE defined in config.vhd
+44:#define MAX_TENSOR_LOG2_SIZE  26
+46://#define MAX_TENSOR_LOG2_SIZE  24 
+
+=== how RISC-V/ztachip sees DDR base: search soc for DDR base addr ===

@@ -1,0 +1,801 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"/><title>Mapping and Execution of the ztachip AI Accelerator on the Xilinx Zynq-7000 (ZC702)</title><style>
+@page { size: A4; margin: 2.5cm 2.2cm; }
+body { font-family: 'Liberation Serif','Times New Roman',serif; font-size: 11.5pt;
+       line-height: 1.45; color: #111; }
+h1.doctitle { text-align: center; font-size: 19pt; line-height: 1.3; margin: 1.2em 0; }
+h1.chapter { page-break-before: always; font-size: 16pt; border-bottom: 2px solid #333;
+             padding-bottom: 4px; margin-top: 0.4em; }
+h1 { font-size: 16pt; }
+h2 { font-size: 13.5pt; margin-top: 1.1em; }
+h3 { font-size: 12pt; margin-top: 0.9em; }
+p  { text-align: justify; margin: 0.5em 0; }
+table { border-collapse: collapse; width: 100%; margin: 0.8em 0; font-size: 10.5pt; }
+th, td { border: 1px solid #888; padding: 4px 7px; vertical-align: top; }
+th { background: #e8e8e8; }
+tbody tr:nth-child(even) { background: #f6f6f6; }
+blockquote { border-left: 3px solid #999; margin: 0.6em 0; padding: 0.2em 0 0.2em 1em;
+             color: #333; font-style: italic; }
+code { font-family: 'Liberation Mono','Courier New',monospace; font-size: 9.8pt;
+       background: #f0f0f0; padding: 0 2px; }
+hr { border: none; border-top: 1px solid #ccc; margin: 1em 0; }
+ul, ol { margin: 0.4em 0 0.4em 1.2em; }
+li { margin: 0.15em 0; }
+</style></head><body>
+<h1 class="doctitle">Mapping and Execution of the ztachip AI Accelerator on the Xilinx Zynq‑7000 (ZC702) for On‑Device Large Language Model Inference</h1>
+<hr/>
+<p><strong>A Graduation Project Report</strong></p>
+<p>Submitted in partial fulfilment of the requirements for the degree of Bachelor of Science in Electronics / Computer Engineering</p>
+<p><strong>Author:</strong> Eslam Elsayed <strong>Contact:</strong> eslam.elwehedy0@gmail.com</p>
+<p><strong>Supervisor:</strong> _____________________ <strong>Department:</strong> _____________________ <strong>University:</strong> _____________________ <strong>Academic Year:</strong> 2025 – 2026</p>
+<hr/>
+<h2>Declaration</h2>
+<p>I declare that this report and the work presented in it are my own and have been generated as the result of my own original work, except where explicit reference is made to the work of others. The hardware design (ztachip) and the language model (SmolLM2) are open‑source artefacts used under their respective licences; all porting, integration, verification, instrumentation, and analysis work described herein is the author&#x27;s contribution.</p>
+<hr/>
+<h2>Abstract</h2>
+<p>This project investigates the feasibility of executing a transformer‑based Large Language Model (LLM) on a low‑cost Field‑Programmable Gate Array (FPGA) by mapping the open‑source <strong>ztachip</strong> AI accelerator onto a <strong>Xilinx Zynq‑7000 (XC7Z020, ZC702)</strong> development platform. The original ztachip reference design targets an Artix‑7 board with an external memory controller and an Ethernet model‑transport path; neither is present in the chosen Zynq configuration. The work therefore re‑hosts the accelerator at the platform‑wrapper level: the soft <strong>VexRiscv</strong> RISC‑V processor and the ztachip tensor engine are retained in the Programmable Logic (PL), while the hard ARM Processing System (PS) is restricted to supplying DDR memory and clock generation. A single‑root clocking scheme (93.75 MHz / 187.5 MHz via an MMCM) was introduced to achieve timing closure, a two‑stage firmware boot was devised to navigate the Zynq low‑memory reserved region, a JTAG/DDR mailbox console replaced the absent serial interface, and a class of silent processor traps caused by misaligned memory accesses was identified and eliminated.</p>
+<p>The integrated system successfully executes the <strong>SmolLM2‑135M</strong> and <strong>SmolLM2‑360M</strong> instruction models. Functional correctness was established at the kernel level by an on‑silicon self‑test in which each ztachip compute primitive was compared against a bit‑exact reference implementation: <strong>11 of 11 kernels passed with zero mismatches</strong> across approximately 38,657 element‑level comparisons, including the INT4/INT8 matrix‑multiply kernels that are intractable to verify in RTL simulation. A performance‑monitoring unit was added to the design and used to characterise three model configurations over a fixed 30‑prompt workload. The measurements demonstrate, through two independent experiments, that the system is <strong>memory‑bandwidth‑bound</strong>: holding the network fixed while widening the weights (Q4→Q8) and holding the weight width fixed while enlarging the network (135M→360M) both reduce throughput in proportion to the volume of data transferred per token, at a sustained effective bandwidth of 426–520 MB/s. The implications for future optimisation are analysed, and a prioritised improvement plan is proposed.</p>
+<p><strong>Keywords:</strong> FPGA, Zynq‑7000, RISC‑V, ztachip, AI accelerator, Large Language Model, transformer, quantisation, memory‑bound, edge inference.</p>
+<hr/>
+<h2>Table of Contents</h2>
+<ol>
+<li>Introduction</li>
+<li>Background and Related Work</li>
+<li>System Architecture and Design</li>
+<li>Implementation and Bring‑up Methodology</li>
+<li>Functional Verification</li>
+<li>Performance Characterisation and Results</li>
+<li>Proposed Optimisations (Future Work)</li>
+<li>Conclusion</li>
+</ol>
+<ul>
+<li>References</li>
+<li>Appendix A: Timing‑Closure Analysis</li>
+<li>Appendix B: Reproduction Procedures</li>
+<li>Appendix C: Consolidated Memory Map</li>
+</ul>
+<h2>List of Tables</h2>
+<ul>
+<li>Table 2.1: FPGA resource utilisation of the integrated design</li>
+<li>Table 2.2: SmolLM2 model configuration parameters</li>
+<li>Table 3.1: Platform mapping from Arty A7 to ZC702</li>
+<li>Table 4.1: JTAG model‑load times by configuration</li>
+<li>Table 5.1: On‑silicon kernel verification results</li>
+<li>Table 6.1: Definitions of reported performance metrics</li>
+<li>Table 6.2: Three‑model throughput and memory‑traffic results</li>
+<li>Table 6.3: Effective bandwidth (memory‑bound evidence)</li>
+<li>Table 6.4: Output‑quality scores</li>
+<li>Table 7.1: Proposed optimisation tracks</li>
+</ul>
+<h2>List of Abbreviations</h2>
+<p>ALU — Arithmetic Logic Unit; AXI — Advanced eXtensible Interface; BRAM — Block RAM; CRPR — Clock Reconvergence Pessimism Removal; DDR — Double Data Rate (memory); DMA — Direct Memory Access; FPGA — Field‑Programmable Gate Array; FFN — Feed‑Forward Network; GGUF — GPT‑Generated Unified Format; HP — High‑Performance (AXI port); KV — Key/Value; LLM — Large Language Model; LUT — Look‑Up Table; MMCM — Mixed‑Mode Clock Manager; OCM — On‑Chip Memory; PL — Programmable Logic; PMU — Performance‑Monitoring Unit; PS — Processing System; RoPE — Rotary Position Embedding; RMSNorm — Root‑Mean‑Square Normalisation; TTFT — Time To First Token; WNS/WHS — Worst Negative/ Hold Slack; ZUF — ztachip Unified Format.</p>
+<hr/>
+<h1 class="chapter">Chapter 1 — Introduction</h1>
+<h2>1.1 Background and Motivation</h2>
+<p>Large Language Models have rapidly become central to natural‑language applications, but their deployment is dominated by power‑intensive graphics processing units (GPUs) in data‑centre environments. There is growing interest in <strong>edge inference</strong> — executing models locally on constrained hardware — for reasons of latency, privacy, cost, and energy. FPGAs are an attractive substrate for such work because their datapaths can be specialised to the regular, multiply‑accumulate‑dominated computation of neural networks, and because their per‑inference energy can be competitive at low clock frequencies.</p>
+<p>This project examines that proposition concretely. It takes an existing open‑source AI accelerator, <strong>ztachip</strong>, and an existing small language model, <strong>SmolLM2</strong>, and asks: <em>can they be made to run together on an inexpensive, resource‑constrained FPGA development board, and what limits their performance once they do?</em> Answering this required not only systems‑integration engineering but also rigorous functional verification and quantitative performance analysis.</p>
+<h2>1.2 Problem Statement</h2>
+<p>The ztachip reference design is configured for an Artix‑7 (Arty A7) platform that provides an external DDR3 memory controller and an Ethernet interface for model transport. The selected target, the Xilinx Zynq‑7000 (XC7Z020) on the ZC702 board, differs fundamentally: memory and clocking are owned by a hard ARM Processing System, and the chosen minimal configuration exposes neither a soft memory controller nor a usable Ethernet or serial path to the Programmable Logic. Mapping ztachip onto this platform therefore demands a re‑hosting of the accelerator&#x27;s environment, a new mechanism for delivering the model into memory, a new host‑device communication channel, and the resolution of platform‑specific hardware and software faults — all while preserving the accelerator core unchanged so that the existing software stack continues to function.</p>
+<h2>1.3 Objectives</h2>
+<ol>
+<li>Port the ztachip accelerator and its VexRiscv host processor onto the ZC702 platform with</li>
+</ol>
+<p>   the ARM PS restricted to memory and clock provision.</p>
+<ol>
+<li>Achieve static‑timing closure for the integrated design.</li>
+<li>Establish a reliable means of loading the model into DDR memory and of communicating with the</li>
+</ol>
+<p>   running system in the absence of conventional I/O.</p>
+<ol>
+<li>Bring up end‑to‑end LLM inference (SmolLM2) on the board.</li>
+<li>Verify the correctness of the accelerator&#x27;s compute kernels on real hardware.</li>
+<li>Instrument the design and characterise its performance, identifying the dominant bottleneck.</li>
+<li>Propose a substantiated optimisation plan.</li>
+</ol>
+<h2>1.4 Scope and Limitations</h2>
+<p>The work concerns functional bring‑up, correctness verification, and performance characterisation. It does <strong>not</strong> include: (i) direct measurement of electrical power, which remains an open item requiring rail‑level instrumentation; (ii) modification of the ztachip compute core, which is deliberately retained unchanged; or (iii) support for non‑LLaMA‑family models such as Qwen, whose metadata schema and attention structure are incompatible with the current converter and firmware. Performance projections for the proposed optimisations (Chapter 7) are analytical estimates, not measured results.</p>
+<h2>1.5 Contributions</h2>
+<p>The principal contributions of this project are:</p>
+<ul>
+<li>A complete platform re‑hosting of ztachip from Artix‑7 to Zynq‑7000, with the PS confined to</li>
+</ul>
+<p>  memory and clock roles (Chapter 3).</p>
+<ul>
+<li>A single‑root clocking solution that achieves timing closure at an exact 2:1 clock ratio</li>
+</ul>
+<p>  (Section 3.3, Appendix A).</p>
+<ul>
+<li>A two‑stage firmware boot and a JTAG/DDR mailbox console that overcome, respectively, the Zynq</li>
+</ul>
+<p>  reserved‑memory region and the absence of a serial interface (Sections 3.4–3.5).</p>
+<ul>
+<li>Identification and elimination of a class of silent misaligned‑load processor traps that</li>
+</ul>
+<p>  prevented model loading (Section 4.5).</p>
+<ul>
+<li>An on‑silicon kernel self‑test establishing the bit‑exact correctness of all eleven LLM compute</li>
+</ul>
+<p>  kernels, including those intractable to simulate (Chapter 5).</p>
+<ul>
+<li>A two‑axis experimental demonstration that the system is memory‑bandwidth‑bound, with supporting</li>
+</ul>
+<p>  on‑chip instrumentation (Chapter 6).</p>
+<h2>1.6 Report Organisation</h2>
+<p>Chapter 2 reviews the relevant hardware and machine‑learning background. Chapter 3 presents the system architecture and the principal design decisions. Chapter 4 details the implementation and bring‑up methodology, including the engineering challenges encountered. Chapter 5 describes the functional verification of the compute kernels. Chapter 6 reports the performance characterisation and the memory‑bound analysis. Chapter 7 proposes future optimisations. Chapter 8 concludes. Appendices provide the timing analysis, reproduction procedures, and a memory‑map reference.</p>
+<hr/>
+<h1 class="chapter">Chapter 2 — Background and Related Work</h1>
+<h2>2.1 Field‑Programmable Gate Arrays</h2>
+<p>A Field‑Programmable Gate Array is an integrated circuit whose digital logic can be configured after manufacture. A circuit is described in a hardware‑description language (VHDL/Verilog), synthesised and placed‑and‑routed by vendor tools, and emitted as a <em>bitstream</em> that configures the device&#x27;s look‑up tables (LUTs), flip‑flops, block RAMs (BRAMs), and dedicated multipliers (DSP slices). The distinction between <em>building</em> a bitstream (synthesis through implementation, requiring hours of tool time) and <em>programming</em> a device with an existing bitstream (a sub‑second configuration operation) is operationally important throughout this report.</p>
+<h2>2.2 The Xilinx Zynq‑7000 SoC and the ZC702 Platform</h2>
+<p>The Zynq‑7000 (XC7Z020) is a System‑on‑Chip integrating two domains on one die: a <strong>Processing System (PS)</strong> containing a hard dual‑core ARM Cortex‑A9 and a DDR memory controller, and a <strong>Programmable Logic (PL)</strong> containing the FPGA fabric. The two are connected by AXI interfaces; in particular, the 64‑bit <strong>S_AXI_HP0</strong> high‑performance port allows logic in the PL to access PS DDR memory. The ZC702 is a development board built around this device. Table 2.1 reports the resource utilisation of the integrated design produced in this work.</p>
+<p><strong>Table 2.1 — FPGA resource utilisation of the integrated design (XC7Z020).</strong></p>
+<table>
+<thead><tr>
+<th style="text-align:left">Resource</th>
+<th style="text-align:right">Used</th>
+<th style="text-align:right">Available</th>
+<th style="text-align:right">Utilisation</th>
+</tr></thead><tbody>
+<tr>
+<td style="text-align:left">Slice LUTs</td>
+<td style="text-align:right">47,187</td>
+<td style="text-align:right">53,200</td>
+<td style="text-align:right">88.7 %</td>
+</tr>
+<tr>
+<td style="text-align:left">Slice Registers</td>
+<td style="text-align:right">57,828</td>
+<td style="text-align:right">106,400</td>
+<td style="text-align:right">54.3 %</td>
+</tr>
+<tr>
+<td style="text-align:left">Block RAM tiles</td>
+<td style="text-align:right">128</td>
+<td style="text-align:right">140</td>
+<td style="text-align:right">91.4 %</td>
+</tr>
+<tr>
+<td style="text-align:left">DSP slices</td>
+<td style="text-align:right">82</td>
+<td style="text-align:right">220</td>
+<td style="text-align:right">37.3 %</td>
+</tr>
+</tbody></table>
+<p>The high LUT and BRAM occupancy (≈ 89 % and 91 %) confirms that the design substantially fills this small device, motivating the use of the compact ztachip configuration and a small model.</p>
+<h2>2.3 The ztachip Accelerator Architecture</h2>
+<p>ztachip is an open‑source, multi‑core RISC‑V AI accelerator targeted at edge devices [1]. Its constituent blocks are: a <strong>VexRiscv</strong> soft RISC‑V processor that executes control firmware; an <strong>Mcore</strong> scheduler; a <strong>dataplane</strong> that streams data and instructions; an on‑chip <strong>scratch‑pad SRAM</strong>; a <strong>tensor engine</strong> comprising multiple parallel processing cores (Pcores), each with scalar and vector ALUs; and a <strong>floating‑point unit</strong> with a vector mode. The tensor engine performs the matrix multiplications that dominate neural‑network inference. In this work, the entire accelerator — VexRiscv and ztachip — resides in the PL; the control software executes on VexRiscv, not on the ARM PS.</p>
+<p>The LLM workload exercises a fixed set of compute <em>kernels</em> implemented on ztachip: INT4/INT8 matrix multiplication (<code>matmul_q4</code>/<code>matmul_q8</code>), RMS normalisation (<code>rms</code>), rotary position embedding (<code>rope</code>), <code>softmax</code>, residual addition (<code>residual</code>), the SwiGLU activation, the <code>sine</code> and <code>cosine</code> table generators, weight <code>quantize</code>, and top‑K selection (<code>k_max</code>). These kernels are the subject of the verification in Chapter 5.</p>
+<h2>2.4 Large Language Models and the Transformer</h2>
+<p>A transformer LLM [2] generates text autoregressively, producing one <em>token</em> (a sub‑word unit) per <em>forward pass</em> through a stack of identical layers. Each layer applies normalisation, projects the input to query/key/value representations, applies positional encoding, computes self‑attention, and passes the result through a feed‑forward network. A final projection over the vocabulary yields <em>logits</em>, from which the next token is sampled. The models used here belong to the LLaMA family [3], for which ztachip&#x27;s software stack already implements the required operations.</p>
+<h2>2.5 SmolLM2</h2>
+<p>SmolLM2 [4] is a family of compact instruction‑tuned LLaMA‑style models. Two members are used: the 135‑million‑parameter and the 360‑million‑parameter variants. Their configuration parameters, read by the firmware at load time, are summarised in Table 2.2.</p>
+<p><strong>Table 2.2 — SmolLM2 model configuration parameters.</strong></p>
+<table>
+<thead><tr>
+<th style="text-align:left">Parameter</th>
+<th style="text-align:right">SmolLM2‑135M</th>
+<th style="text-align:right">SmolLM2‑360M</th>
+<th style="text-align:left">Meaning</th>
+</tr></thead><tbody>
+<tr>
+<td style="text-align:left">Embedding dimension</td>
+<td style="text-align:right">576</td>
+<td style="text-align:right">960</td>
+<td style="text-align:left">width of each token vector</td>
+</tr>
+<tr>
+<td style="text-align:left">FFN hidden dimension</td>
+<td style="text-align:right">1,536</td>
+<td style="text-align:right">2,560</td>
+<td style="text-align:left">width inside the feed‑forward block</td>
+</tr>
+<tr>
+<td style="text-align:left">Number of layers</td>
+<td style="text-align:right">30</td>
+<td style="text-align:right">32</td>
+<td style="text-align:left">transformer blocks stacked</td>
+</tr>
+<tr>
+<td style="text-align:left">Attention heads</td>
+<td style="text-align:right">9</td>
+<td style="text-align:right">15</td>
+<td style="text-align:left">parallel attention sub‑spaces</td>
+</tr>
+<tr>
+<td style="text-align:left">Key/value heads</td>
+<td style="text-align:right">3</td>
+<td style="text-align:right">5</td>
+<td style="text-align:left">grouped‑query attention factor</td>
+</tr>
+<tr>
+<td style="text-align:left">Key/value dimension</td>
+<td style="text-align:right">192</td>
+<td style="text-align:right">320</td>
+<td style="text-align:left">size of key/value projections</td>
+</tr>
+<tr>
+<td style="text-align:left">Head size</td>
+<td style="text-align:right">64</td>
+<td style="text-align:right">64</td>
+<td style="text-align:left">dimension per attention head</td>
+</tr>
+<tr>
+<td style="text-align:left">Vocabulary size</td>
+<td style="text-align:right">49,152</td>
+<td style="text-align:right">49,152</td>
+<td style="text-align:left">distinct output tokens</td>
+</tr>
+<tr>
+<td style="text-align:left">Context length</td>
+<td style="text-align:right">8,192</td>
+<td style="text-align:right">8,192</td>
+<td style="text-align:left">maximum sequence length</td>
+</tr>
+</tbody></table>
+<p>The firmware imposes compile‑time limits of 32 layers and a 1,024‑token working sequence; the 360M model, at exactly 32 layers, therefore occupies the layer limit.</p>
+<h2>2.6 Weight Quantisation</h2>
+<p>Quantisation reduces the numerical precision of model weights to lower memory footprint and bandwidth. This work uses 4‑bit (<strong>Q4/INT4</strong>) and 8‑bit (<strong>Q8/INT8</strong>) integer quantisation. The accelerator consumes models in ztachip&#x27;s own <strong>ZUF</strong> container, converted from the standard GGUF format [5]; the converter accepts an F16/F32 GGUF input and emits a Q4 or Q8 ZUF file. The on‑device file sizes are 147 MB (135M‑Q4), 200 MB (135M‑Q8), and 308 MB (360M‑Q4). Because Q4 and Q8 of the same model implement an identical network, the pair provides a controlled experiment in which only the data volume changes — exploited in Chapter 6.</p>
+<h2>2.7 Related Work</h2>
+<p>Edge LLM inference on embedded GPUs (e.g. the NVIDIA Jetson family) is an active area; a teammate&#x27;s measurements on a Jetson TX1 provide an external reference point in Section 6.6. FPGA‑based neural accelerators are well established for convolutional workloads; the present work is distinguished by targeting a <em>transformer LLM</em> on a <em>resource‑constrained</em> Zynq device using an <em>unmodified</em> open‑source accelerator core, and by its emphasis on on‑silicon verification and instrumented bottleneck analysis.</p>
+<hr/>
+<h1 class="chapter">Chapter 3 — System Architecture and Design</h1>
+<h2>3.1 Design Philosophy: VexRiscv in the Programmable Logic</h2>
+<p>The central architectural decision is to retain the VexRiscv soft processor as the controller of ztachip within the PL, rather than re‑architecting the system so that the ARM PS drives the accelerator over a general‑purpose AXI master. This choice preserves the entire existing ztachip software stack unmodified, keeps the design portable across FPGA families, and confines the PS to two well‑defined services: provision of DDR memory (reached from the PL via S_AXI_HP0) and generation of clocks. The general‑purpose PS→PL master (M_AXI_GP0) is disabled.</p>
+<h2>3.2 Target Platform Mapping</h2>
+<p>Table 3.1 summarises the differences between the original Arty A7 environment and the ZC702 target, together with the corresponding adaptation. The accelerator core itself is reused essentially unchanged; the modifications occur at the platform‑wrapper layer.</p>
+<p><strong>Table 3.1 — Platform mapping from Arty A7 to ZC702.</strong></p>
+<table>
+<thead><tr>
+<th style="text-align:left">Aspect</th>
+<th style="text-align:left">Arty A7 (original)</th>
+<th style="text-align:left">ZC702 (this work)</th>
+<th style="text-align:left">Adaptation</th>
+</tr></thead><tbody>
+<tr>
+<td style="text-align:left">FPGA device</td>
+<td style="text-align:left">XC7A100T (Artix‑7)</td>
+<td style="text-align:left">XC7Z020 (Zynq‑7000)</td>
+<td style="text-align:left">new project, PS block design</td>
+</tr>
+<tr>
+<td style="text-align:left">Memory controller</td>
+<td style="text-align:left">soft MIG (external DDR3)</td>
+<td style="text-align:left">PS DDR controller</td>
+<td style="text-align:left">PL reaches DDR via S_AXI_HP0 (64‑bit)</td>
+</tr>
+<tr>
+<td style="text-align:left">Memory data width</td>
+<td style="text-align:left">128‑bit</td>
+<td style="text-align:left">64‑bit</td>
+<td style="text-align:left"><code>exmem_data_width_c</code> 128 → 64</td>
+</tr>
+<tr>
+<td style="text-align:left">Clock source</td>
+<td style="text-align:left">oscillator + clock wizard</td>
+<td style="text-align:left">PS FCLK + added MMCM</td>
+<td style="text-align:left">single‑root 2:1 clocking</td>
+</tr>
+<tr>
+<td style="text-align:left">Model transport</td>
+<td style="text-align:left">Ethernet (TFTP)</td>
+<td style="text-align:left">JTAG pre‑load into DDR</td>
+<td style="text-align:left">host‑side loader scripts</td>
+</tr>
+<tr>
+<td style="text-align:left">Console I/O</td>
+<td style="text-align:left">UART</td>
+<td style="text-align:left">DDR mailbox over JTAG</td>
+<td style="text-align:left">ring‑buffer protocol</td>
+</tr>
+</tbody></table>
+<p>The reduction of the external memory interface from 128 to 64 bits is a direct consequence of the HP port width and is significant for the bandwidth analysis of Chapter 6.</p>
+<h2>3.3 Clocking Architecture</h2>
+<p>ztachip requires a secondary clock, <code>clk_x2</code>, at exactly twice the frequency of the main clock, because certain datapaths emit two words per main‑clock cycle. The Zynq&#x27;s fabric clocks (FCLK) are derived by integer division of a 1500 MHz PLL, so an exact 2:1 ratio is only obtainable at frequencies whose divisors are both integral. The pair <strong>93.75 MHz (1500/16)</strong> and <strong>187.5 MHz (1500/8)</strong> satisfies this and lies just below 100 MHz, providing timing margin.</p>
+<p>Deriving the two clocks from two independent PS outputs produced hold‑time violations, because the two clock trees shared no common node and the timing analyser could not credit common‑path pessimism. The solution was to feed a single PS clock into a <strong>Mixed‑Mode Clock Manager (MMCM)</strong> that generates both outputs from a common root; together with a refinement of the input‑jitter constraint, this yielded full closure (worst negative slack 0.000 ns, worst hold slack +0.009 ns). A detailed analysis is given in Appendix A.</p>
+<h2>3.4 Memory Architecture and Address Map</h2>
+<p>The 1 GB DDR address space (0x00000000–0x3FFFFFFF) is partitioned as shown in Appendix C. Three design considerations shape it:</p>
+<ol>
+<li><strong>Reset vector.</strong> The VexRiscv reset vector is fixed at 0x00004000, which lies in the PS</li>
+</ol>
+<p>   On‑Chip Memory (OCM). The first executed instruction must therefore reside there.</p>
+<ol>
+<li><strong>Reserved low‑memory region.</strong> Addresses 0x00040000–0x000FFFFF are not writable through the</li>
+</ol>
+<p>   debug interface on this device, a side‑effect of the OCM remapping mechanism. Consequently the    firmware is split into a small vector stub placed in OCM at 0x00004000 and a main image placed    in DDR at 0x00100000, straddling the reserved region.</p>
+<ol>
+<li><strong>Coexistence of model, heap and console.</strong> The model is placed at 0x10000000, clear of the</li>
+</ol>
+<p>   ~200 MB firmware heap that grows below it; the mailbox console is placed at 0x30000000, leaving    a 512 MB region for the model so that the 308 MB 360M model fits. (The console was relocated    from 0x20000000 to 0x30000000 specifically to accommodate this larger model.)</p>
+<p>Two sentinel values aid bring‑up: the ASCII marker <code>&quot;ZTAC&quot;</code> (0x4341545A) at the model base confirms model residency in DDR, and <code>&quot;ZTCH&quot;</code> (0x5A544348) at the console base confirms that the firmware has booted and initialised the console.</p>
+<h2>3.5 Host–Device Communication</h2>
+<p>In the absence of a serial interface reachable from the PL, host–device communication uses a <strong>DDR mailbox</strong>: a pair of ring buffers in memory (one for device→host output, one for host→device input), each 4 KB, with head/tail index words and the <code>&quot;ZTCH&quot;</code> liveness marker. The host accesses these structures over JTAG using the Xilinx debugger. Standard‑library output (<code>printf</code>) on the device is routed to the output ring, so all diagnostic and application text becomes visible to the host. Robustness wrappers retry transient JTAG access failures, and the firmware caps each response so that output never overflows the 4 KB ring — a property later exploited to validate host‑side timing (Section 6.1).</p>
+<hr/>
+<h1 class="chapter">Chapter 4 — Implementation and Bring‑up Methodology</h1>
+<h2>4.1 Hardware Build Flow</h2>
+<p>The PL design is created as a Vivado project incorporating a Zynq PS block design (configuring the FCLK outputs and the S_AXI_HP0 slave) and the ztachip RTL with the modified memory‑width parameter. Synthesis, implementation, and bitstream generation are performed once; the resulting <code>main_zc702.bit</code> is reused thereafter. Rebuilding the bitstream is required only when the hardware itself changes (for example, the optimisations proposed in Chapter 7) and is not part of routine operation.</p>
+<h2>4.2 Firmware Build System</h2>
+<p>The firmware is compiled for the <code>rv32im</code> instruction set and linked according to a script that realises the address map of Section 3.4. The build selects one of several mutually exclusive modes through makefile flags: <code>LLM_TEST</code> (the chatbot application, the default), <code>KERNEL_TEST</code> (a lean kernel self‑test introduced in this work, Chapter 5), and <code>UNIT_TEST</code> (a comprehensive vision‑plus‑ LLM suite). The linked ELF is post‑processed with <code>objcopy</code> into two binaries — the vector stub and the main image — corresponding to the two load addresses.</p>
+<h2>4.3 Bring‑up Sequence</h2>
+<p>The operational bring‑up follows a fixed, verification‑first order:</p>
+<ol>
+<li><em>(Build the bitstream — only if hardware changed.)</em></li>
+<li>Power on and execute PS initialisation, bringing up DDR and the clocks.</li>
+<li>Program the FPGA with the existing bitstream (upload the accelerator).</li>
+<li><strong>Verify the compute kernels</strong> by the on‑silicon self‑test (Chapter 5), before entrusting the</li>
+</ol>
+<p>   accelerator with the full model.</p>
+<ol>
+<li>Pre‑load the model into DDR at 0x10000000 over JTAG.</li>
+<li>Load the two firmware binaries, clear the mailbox, and release VexRiscv from reset.</li>
+<li>Communicate with the running system, or execute the automated benchmark, via the mailbox.</li>
+</ol>
+<p>An operational constraint was observed: the system boots reliably only on the first bring‑up after a power cycle, because re‑initialising an already‑running PS can leave it in an inconsistent state. A power cycle is therefore performed before each fresh run.</p>
+<h2>4.4 Model Preparation and Loading</h2>
+<p>Models are converted from F16 GGUF to ZUF (Q4 or Q8) on the host and transferred into DDR over JTAG. The transfer is the dominant latency in a cold start because the JTAG link is limited by per‑transaction latency to approximately 65 KB/s; attempts to raise the link clock and to halt the ARM core during transfer did not improve it. Table 4.1 lists the resulting load times. A chunked transfer with read‑back verification is used, after a single large transfer was found to under‑transfer silently.</p>
+<p><strong>Table 4.1 — JTAG model‑load times by configuration.</strong></p>
+<table>
+<thead><tr>
+<th style="text-align:left">Model</th>
+<th style="text-align:right">File size</th>
+<th style="text-align:right">Approx. load time</th>
+</tr></thead><tbody>
+<tr>
+<td style="text-align:left">SmolLM2‑135M Q4</td>
+<td style="text-align:right">147 MB</td>
+<td style="text-align:right">~38 min</td>
+</tr>
+<tr>
+<td style="text-align:left">SmolLM2‑135M Q8</td>
+<td style="text-align:right">200 MB</td>
+<td style="text-align:right">~52 min</td>
+</tr>
+<tr>
+<td style="text-align:left">SmolLM2‑360M Q4</td>
+<td style="text-align:right">308 MB</td>
+<td style="text-align:right">~88 min</td>
+</tr>
+</tbody></table>
+<h2>4.5 Engineering Challenges and Resolutions</h2>
+<p>Several platform‑specific faults were encountered and resolved; they constitute a substantial part of the engineering contribution.</p>
+<p><strong>(a) Timing closure.</strong> Independent clock roots caused hold violations; an MMCM common root with jitter refinement achieved closure (Section 3.3, Appendix A).</p>
+<p><strong>(b) Reserved low‑memory region.</strong> The non‑writable region 0x40000–0xFFFFF was navigated by the two‑stage boot described in Section 3.4, with all OCM blocks mapped low.</p>
+<p><strong>(c) Absent serial interface.</strong> Replaced by the DDR mailbox (Section 3.5).</p>
+<p><strong>(d) Silent misaligned‑load traps (the principal software fault).</strong> After the model was found in DDR, the firmware froze without diagnostic. The cause was traced to the VexRiscv core, which lacks hardware support for misaligned word loads and traps silently when one occurs. The C library&#x27;s string‑comparison routine reads memory a full 32‑bit word at a time; because model strings reside at arbitrary (often odd) addresses, this generated misaligned accesses. The resolution was to replace word‑wise library comparisons with byte‑wise comparisons in the model loader and tokeniser, which are inherently aligned. This single correction unblocked model loading and all subsequent inference. The resulting design rule — never apply word‑optimised string routines to raw model bytes in DDR — is recorded for future work.</p>
+<p><strong>(e) Dead on‑chip counters.</strong> The original integration returned zero for all internal AXI peripheral reads, owing to a tied‑high bus &quot;ready&quot; signal; correcting this revived both the timer and the performance‑monitoring unit used in Chapter 6.</p>
+<hr/>
+<h1 class="chapter">Chapter 5 — Functional Verification</h1>
+<h2>5.1 Verification Strategy</h2>
+<p>Correctness was addressed at two complementary levels. At the <strong>system level</strong>, the integrated design produces coherent, on‑topic responses to natural‑language prompts (Chapter 6 reports their quality). At the <strong>kernel level</strong>, each ztachip compute primitive is compared directly against a reference implementation. The kernel‑level test is the subject of this chapter because it isolates the correctness of the hardware datapath from the behaviour of the full model.</p>
+<h2>5.2 Kernel‑Level Verification Methodology</h2>
+<p>A dedicated firmware build (<code>KERNEL_TEST</code>) executes each compute kernel on self‑generated input data and compares its output, element by element, against the bit‑exact reference C implementation distributed with ztachip (<code>llm_ref.c</code>). The comparison counts matching elements (<code>ok</code>) and mismatching elements (<code>bad</code>/<code>fail</code>); correctness requires zero mismatches. No model is loaded, as the tests synthesise their own operands. Results are emitted over the mailbox and captured by the host.</p>
+<p>A key methodological point is that this verification is performed <strong>on silicon rather than in simulation</strong>. The heavy kernels — in particular the INT4/INT8 matrix multiplications that constitute the bulk of every transformer layer — require on the order of billions of cycles and are intractable to simulate at register‑transfer level (hours of wall‑clock time per kernel), whereas they complete in seconds on the device. On‑silicon execution is therefore the only practical route to their end‑to‑end verification.</p>
+<h2>5.3 Results</h2>
+<p>Table 5.1 reports the outcome. All eleven kernels matched the reference exactly. The <code>ok</code> column records the number of compared elements (a measure of test coverage, determined by each kernel&#x27;s test‑vector size); every kernel reported zero mismatches.</p>
+<p><strong>Table 5.1 — On‑silicon kernel verification results (XC7Z020 at 93.75 MHz).</strong></p>
+<table>
+<thead><tr>
+<th style="text-align:right">#</th>
+<th style="text-align:left">Kernel</th>
+<th style="text-align:right">Elements compared (<code>ok</code>)</th>
+<th style="text-align:right">Mismatches</th>
+<th style="text-align:left">Function verified</th>
+</tr></thead><tbody>
+<tr>
+<td style="text-align:right">1</td>
+<td style="text-align:left">residual</td>
+<td style="text-align:right">1,152</td>
+<td style="text-align:right">0</td>
+<td style="text-align:left">skip‑connection addition</td>
+</tr>
+<tr>
+<td style="text-align:right">2</td>
+<td style="text-align:left">SwiGLU</td>
+<td style="text-align:right">1,536</td>
+<td style="text-align:right">0</td>
+<td style="text-align:left">feed‑forward activation</td>
+</tr>
+<tr>
+<td style="text-align:right">3</td>
+<td style="text-align:left">rms</td>
+<td style="text-align:right">1,152</td>
+<td style="text-align:right">0</td>
+<td style="text-align:left">RMS normalisation</td>
+</tr>
+<tr>
+<td style="text-align:right">4</td>
+<td style="text-align:left">rope</td>
+<td style="text-align:right">384</td>
+<td style="text-align:right">0</td>
+<td style="text-align:left">rotary position embedding</td>
+</tr>
+<tr>
+<td style="text-align:right">5</td>
+<td style="text-align:left">softmax</td>
+<td style="text-align:right">512</td>
+<td style="text-align:right">0</td>
+<td style="text-align:left">attention normalisation</td>
+</tr>
+<tr>
+<td style="text-align:right">6</td>
+<td style="text-align:left">k_max</td>
+<td style="text-align:right">1</td>
+<td style="text-align:right">0</td>
+<td style="text-align:left">top‑K selection</td>
+</tr>
+<tr>
+<td style="text-align:right">7</td>
+<td style="text-align:left">cosine</td>
+<td style="text-align:right">14,400</td>
+<td style="text-align:right">0</td>
+<td style="text-align:left">RoPE frequency table</td>
+</tr>
+<tr>
+<td style="text-align:right">8</td>
+<td style="text-align:left">sine</td>
+<td style="text-align:right">14,400</td>
+<td style="text-align:right">0</td>
+<td style="text-align:left">RoPE frequency table</td>
+</tr>
+<tr>
+<td style="text-align:right">9</td>
+<td style="text-align:left">quantize</td>
+<td style="text-align:right">2,048</td>
+<td style="text-align:right">0</td>
+<td style="text-align:left">weight quantisation</td>
+</tr>
+<tr>
+<td style="text-align:right">10</td>
+<td style="text-align:left"><strong>matmul_q4</strong></td>
+<td style="text-align:right">1,536</td>
+<td style="text-align:right">0</td>
+<td style="text-align:left"><strong>INT4 matrix multiplication</strong></td>
+</tr>
+<tr>
+<td style="text-align:right">11</td>
+<td style="text-align:left"><strong>matmul_q8</strong></td>
+<td style="text-align:right">1,536</td>
+<td style="text-align:right">0</td>
+<td style="text-align:left"><strong>INT8 matrix multiplication</strong></td>
+</tr>
+<tr>
+<td style="text-align:right"></td>
+<td style="text-align:left"><strong>Total</strong></td>
+<td style="text-align:right"><strong>≈ 38,657</strong></td>
+<td style="text-align:right"><strong>0</strong></td>
+<td style="text-align:left"></td>
+</tr>
+</tbody></table>
+<h2>5.4 Discussion</h2>
+<p>The result establishes that the ztachip compute datapath, as integrated on the ZC702, is mathematically faithful to the reference across the full set of LLM kernels, with particular significance for the matrix‑multiply primitives that cannot be verified by simulation. Together with the system‑level evidence that the model produces coherent output, this provides independent, layered assurance of functional correctness.</p>
+<hr/>
+<h1 class="chapter">Chapter 6 — Performance Characterisation and Results</h1>
+<h2>6.1 Experimental Methodology</h2>
+<p>Each model configuration was evaluated on an identical workload of 30 prompts spanning six categories (mathematics, science, geography, history, engineering, and general knowledge), five prompts each, to avoid topic bias. Throughput was measured by host wall‑clock timing. This is valid because each response is capped so that its text fits within the 4 KB output ring; the firmware therefore never stalls waiting for the host to drain the ring over the slow JTAG link, and host‑elapsed time closely approximates on‑device computation time. Memory‑traffic quantities were obtained from the on‑chip performance‑monitoring unit.</p>
+<h2>6.2 Performance Metrics</h2>
+<p>Table 6.1 defines every reported quantity to avoid ambiguity.</p>
+<p><strong>Table 6.1 — Definitions of reported performance metrics.</strong></p>
+<table>
+<thead><tr>
+<th style="text-align:left">Metric</th>
+<th style="text-align:left">Unit</th>
+<th style="text-align:left">Definition</th>
+</tr></thead><tbody>
+<tr>
+<td style="text-align:left">Throughput (tok/s)</td>
+<td style="text-align:left">tokens/second</td>
+<td style="text-align:left">generated tokens divided by elapsed time; higher is faster</td>
+</tr>
+<tr>
+<td style="text-align:left">Mean / Median</td>
+<td style="text-align:left">tok/s</td>
+<td style="text-align:left">arithmetic mean and median over the 30 prompts</td>
+</tr>
+<tr>
+<td style="text-align:left">Standard deviation (sd)</td>
+<td style="text-align:left">tok/s</td>
+<td style="text-align:left">run‑to‑run dispersion; small values indicate consistency</td>
+</tr>
+<tr>
+<td style="text-align:left">TTFT</td>
+<td style="text-align:left">seconds</td>
+<td style="text-align:left">time to first token (prompt‑processing/prefill latency)</td>
+</tr>
+<tr>
+<td style="text-align:left">Generated tokens</td>
+<td style="text-align:left">tokens</td>
+<td style="text-align:left">length of the produced response</td>
+</tr>
+<tr>
+<td style="text-align:left">Bytes per token</td>
+<td style="text-align:left">bytes</td>
+<td style="text-align:left">weight bytes read from DDR to produce one token</td>
+</tr>
+<tr>
+<td style="text-align:left">DDR read rate</td>
+<td style="text-align:left">MB/s</td>
+<td style="text-align:left">sustained read bandwidth delivered by the memory engine</td>
+</tr>
+<tr>
+<td style="text-align:left">Read‑active fraction</td>
+<td style="text-align:left">%</td>
+<td style="text-align:left">proportion of time the read engine is transferring data</td>
+</tr>
+<tr>
+<td style="text-align:left">Read‑stall fraction</td>
+<td style="text-align:left">%</td>
+<td style="text-align:left">proportion of time the read engine is idle (≈ 100 % − read‑active)</td>
+</tr>
+<tr>
+<td style="text-align:left">Effective bandwidth</td>
+<td style="text-align:left">MB/s</td>
+<td style="text-align:left">throughput × bytes‑per‑token; a derived diagnostic (Section 6.4)</td>
+</tr>
+</tbody></table>
+<p>The governing relationship, used throughout the analysis, is:</p>
+<blockquote>throughput (tok/s) = delivered DDR bandwidth ÷ bytes per token.</blockquote>
+<h2>6.3 Throughput Results</h2>
+<p>Table 6.2 reports the measured throughput and memory traffic for the three configurations.</p>
+<p><strong>Table 6.2 — Three‑model throughput and memory‑traffic results (30 prompts each).</strong></p>
+<table>
+<thead><tr>
+<th style="text-align:left">Configuration</th>
+<th style="text-align:right">Mean tok/s</th>
+<th style="text-align:right">Median</th>
+<th style="text-align:right">sd</th>
+<th style="text-align:right">TTFT (s)</th>
+<th style="text-align:right">Bytes/token</th>
+<th style="text-align:right">DDR read</th>
+<th style="text-align:right">Read‑active</th>
+<th style="text-align:right">Read‑stall</th>
+</tr></thead><tbody>
+<tr>
+<td style="text-align:left">SmolLM2‑135M Q4 (baseline)</td>
+<td style="text-align:right">4.13</td>
+<td style="text-align:right">4.21</td>
+<td style="text-align:right">0.29</td>
+<td style="text-align:right">5.2</td>
+<td style="text-align:right">103 MB</td>
+<td style="text-align:right">431 MB/s</td>
+<td style="text-align:right">59 %</td>
+<td style="text-align:right">42 %</td>
+</tr>
+<tr>
+<td style="text-align:left">SmolLM2‑135M Q8</td>
+<td style="text-align:right">3.34</td>
+<td style="text-align:right">3.38</td>
+<td style="text-align:right">0.16</td>
+<td style="text-align:right">6.7</td>
+<td style="text-align:right">156 MB</td>
+<td style="text-align:right">526 MB/s</td>
+<td style="text-align:right">71 %</td>
+<td style="text-align:right">30 %</td>
+</tr>
+<tr>
+<td style="text-align:left">SmolLM2‑360M Q4</td>
+<td style="text-align:right">1.90</td>
+<td style="text-align:right">1.89</td>
+<td style="text-align:right">0.04</td>
+<td style="text-align:right">12.0</td>
+<td style="text-align:right">248 MB</td>
+<td style="text-align:right">478 MB/s</td>
+<td style="text-align:right">65 %</td>
+<td style="text-align:right">36 %</td>
+</tr>
+</tbody></table>
+<p>The Q4 baseline is the fastest configuration; the Q8 variant of the same model is slower despite performing identical arithmetic; and the larger 360M model is the slowest. The standard deviation decreases markedly with model size (0.29 → 0.04 tok/s), indicating that the larger, more strongly memory‑limited workload exhibits near‑deterministic run times.</p>
+<h2>6.4 The Memory‑Bound Analysis</h2>
+<p>The hypothesis that throughput is limited by memory bandwidth rather than computation is supported by two independent experiments.</p>
+<p><strong>Experiment A — fixed network, varied weight width (Q4 vs Q8).</strong> These configurations implement an identical network and perform identical arithmetic per token; only the weight width differs, with Q8 transferring approximately 1.5× the bytes. The observed slowdown is 1.24×. A compute‑limited design would exhibit equal throughput; the observed dependence on data volume indicates a memory limit.</p>
+<p><strong>Experiment B — fixed weight width, varied network size (135M vs 360M, both Q4).</strong> The 360M model transfers 2.4× the bytes per token and runs at 0.46× the throughput; throughput falls in near‑ proportion to data volume.</p>
+<p>The two experiments are reconciled by the effective‑bandwidth diagnostic in Table 6.3: the product of throughput and bytes‑per‑token is approximately constant across three very different models, indicating that all three operate against a common memory ceiling.</p>
+<p><strong>Table 6.3 — Effective bandwidth (memory‑bound evidence).</strong></p>
+<table>
+<thead><tr>
+<th style="text-align:left">Configuration</th>
+<th style="text-align:right">Bytes/token</th>
+<th style="text-align:right">Throughput</th>
+<th style="text-align:right">Effective bandwidth</th>
+</tr></thead><tbody>
+<tr>
+<td style="text-align:left">SmolLM2‑135M Q4</td>
+<td style="text-align:right">103 MB</td>
+<td style="text-align:right">4.13 tok/s</td>
+<td style="text-align:right">426 MB/s</td>
+</tr>
+<tr>
+<td style="text-align:left">SmolLM2‑135M Q8</td>
+<td style="text-align:right">156 MB</td>
+<td style="text-align:right">3.34 tok/s</td>
+<td style="text-align:right">520 MB/s</td>
+</tr>
+<tr>
+<td style="text-align:left">SmolLM2‑360M Q4</td>
+<td style="text-align:right">248 MB</td>
+<td style="text-align:right">1.90 tok/s</td>
+<td style="text-align:right">472 MB/s</td>
+</tr>
+</tbody></table>
+<p>The effective bandwidth is not perfectly constant: the wider, more regular INT8 reads stall less (30 %) than the INT4 four‑bit unpacking (42 %), so the Q8 configuration sustains a higher raw bandwidth. The central conclusion is nonetheless robust: throughput tracks data volume, not arithmetic. Furthermore, the sustained 430–520 MB/s is only 57–71 % of the 64‑bit memory port&#x27;s own ceiling at 93.75 MHz (≈ 750 MB/s) and roughly one‑tenth of the DDR3 devices&#x27; raw capability, indicating that the limiting element is the on‑chip memory <em>path</em>, not the DRAM — a finding that directly informs Chapter 7.</p>
+<h2>6.5 Output‑Quality Assessment</h2>
+<p>The 30 responses of each configuration were graded against ground truth on a three‑point scale (2 = correct, 1 = partial, 0 = incorrect; maximum 60). Results are given in Table 6.4.</p>
+<p><strong>Table 6.4 — Output‑quality scores (max 60).</strong></p>
+<table>
+<thead><tr>
+<th style="text-align:left">Configuration</th>
+<th style="text-align:right">Score</th>
+<th style="text-align:left">Observation</th>
+</tr></thead><tbody>
+<tr>
+<td style="text-align:left">SmolLM2‑135M Q4</td>
+<td style="text-align:right">24</td>
+<td style="text-align:left">weakest; prone to repetition</td>
+</tr>
+<tr>
+<td style="text-align:left">SmolLM2‑135M Q8</td>
+<td style="text-align:right">28</td>
+<td style="text-align:left">≈ Q4 (same network; difference attributable to sampling)</td>
+</tr>
+<tr>
+<td style="text-align:left">SmolLM2‑360M Q4</td>
+<td style="text-align:right">40</td>
+<td style="text-align:left">strongest; the only configuration to answer several technical items correctly</td>
+</tr>
+</tbody></table>
+<p>The negligible Q4–Q8 quality difference is expected, as they implement the same network; this is precisely why that pair is used for the bandwidth experiment and not for quality claims. The quality improvement of the 360M model is attributable to parameter count, at the cost of a 2.2× increase in latency per response. All configurations remain factually unreliable at this scale and are best regarded as producing well‑structured rather than authoritative output.</p>
+<h2>6.6 Comparative Baseline</h2>
+<p>For external context, a teammate measured the same model (SmolLM2‑135M Q4) on an NVIDIA Jetson TX1, obtaining approximately 14.92 tok/s, against 4.13 tok/s for the present design. The roughly 3.6× advantage of the Jetson is consistent with its order‑of‑magnitude higher clock frequency and greater memory bandwidth. As the objective of this work is efficiency on a low‑cost FPGA rather than absolute throughput, the meaningful comparison is energy efficiency (tokens per second per watt); the requisite power measurement is identified as the principal open item (Section 7.5).</p>
+<h2>6.7 Discussion</h2>
+<p>The characterisation yields a clear and quantitatively supported conclusion: the design is memory‑bandwidth‑bound, and the bottleneck lies in the on‑chip memory path rather than the DRAM or the compute units, the latter being idle 30–42 % of the time. This result determines the direction of the optimisation plan in Chapter 7 — namely, that performance is to be improved by increasing delivered bandwidth or reducing data volume per token, not by adding arithmetic resources.</p>
+<hr/>
+<h1 class="chapter">Chapter 7 — Proposed Optimisations (Future Work)</h1>
+<h2>7.1 Analytical Basis</h2>
+<p>From the governing relationship of Section 6.2, throughput is improved by raising delivered bandwidth (the numerator) or reducing bytes per token (the denominator). The measurements of Chapter 6 show substantial headroom in the former, since the delivered bandwidth is well below both the memory port&#x27;s clock‑limited ceiling and the DRAM&#x27;s raw capability, and the read engine is idle for a significant fraction of each run. The proposed work is organised accordingly (Table 7.1).</p>
+<p><strong>Table 7.1 — Proposed optimisation tracks.</strong></p>
+<table>
+<thead><tr>
+<th style="text-align:left">Track</th>
+<th style="text-align:left">Measure</th>
+<th style="text-align:left">Rationale (from Chapter 6)</th>
+<th style="text-align:left">Requires</th>
+</tr></thead><tbody>
+<tr>
+<td style="text-align:left">A1</td>
+<td style="text-align:left">Raise the HP/memory‑port clock (≈ 94 → ~188 MHz)</td>
+<td style="text-align:left">delivered BW is 57–71 % of the port ceiling</td>
+<td style="text-align:left">bitstream rebuild + re‑closure</td>
+</tr>
+<tr>
+<td style="text-align:left">A2</td>
+<td style="text-align:left">Widen the memory path 64 → 128 bits (dual HP ports)</td>
+<td style="text-align:left">restores the Arty‑class width</td>
+<td style="text-align:left">bitstream rebuild</td>
+</tr>
+<tr>
+<td style="text-align:left">A3</td>
+<td style="text-align:left">Increase outstanding reads / prefetch depth / burst length</td>
+<td style="text-align:left">read engine idle 30–42 %</td>
+<td style="text-align:left">bitstream rebuild</td>
+</tr>
+<tr>
+<td style="text-align:left">B1</td>
+<td style="text-align:left">Quantise the key/value cache (FP16 → INT8)</td>
+<td style="text-align:left">reduces per‑token data volume</td>
+<td style="text-align:left">firmware only</td>
+</tr>
+<tr>
+<td style="text-align:left">B2</td>
+<td style="text-align:left">Cache reused tensors in scratch‑pad SRAM</td>
+<td style="text-align:left">avoids re‑reading invariants per token</td>
+<td style="text-align:left">firmware only</td>
+</tr>
+<tr>
+<td style="text-align:left">B3</td>
+<td style="text-align:left">Sub‑4‑bit / mixed quantisation on tolerant layers</td>
+<td style="text-align:left">reduces data volume (quality trade‑off)</td>
+<td style="text-align:left">firmware + tooling</td>
+</tr>
+<tr>
+<td style="text-align:left">C1</td>
+<td style="text-align:left">Double‑buffer (prefetch next layer during compute)</td>
+<td style="text-align:left">converts measured idle time into work</td>
+<td style="text-align:left">bitstream rebuild</td>
+</tr>
+<tr>
+<td style="text-align:left">D1/D2</td>
+<td style="text-align:left">Per‑kernel profiling; rail‑power measurement</td>
+<td style="text-align:left">guides effort; enables tok/s‑per‑watt</td>
+<td style="text-align:left">firmware / instrumentation</td>
+</tr>
+</tbody></table>
+<h2>7.2–7.4 Summary of Tracks</h2>
+<p>Track A targets delivered bandwidth, the largest lever, through clock frequency, datapath width, and improved memory‑transaction concurrency; these require hardware changes and a renewed timing closure. Track B reduces data volume in firmware, primarily by compressing the key/value cache and by retaining invariant tensors on chip. Track C overlaps computation with memory transfer through double‑buffering, directly recovering the measured idle fraction. Track D sustains the measurement infrastructure, adding per‑kernel profiling and the rail‑level power measurement required for an energy‑efficiency figure.</p>
+<h2>7.5 Roadmap and Expected Gains</h2>
+<p>A pragmatic order is D1 → A1 → A3 → C1 → A2 → B, beginning with the lowest‑risk, most informative steps. An analytical estimate suggests that A1, A3, and C1 together could raise the 135M‑Q4 configuration from 4.13 to approximately 7–9 tok/s without loss of output quality; this figure is a projection and not a measured result, and its realisation depends on the frequency achievable under renewed timing closure. The single most important measurement outstanding is electrical power, without which the project&#x27;s central efficiency hypothesis cannot be quantitatively concluded.</p>
+<hr/>
+<h1 class="chapter">Chapter 8 — Conclusion</h1>
+<h2>8.1 Summary of Achievements</h2>
+<p>This project successfully mapped the open‑source ztachip AI accelerator and its VexRiscv host processor onto the Xilinx Zynq‑7000 (ZC702) platform, with the ARM Processing System restricted to memory and clock provision, and brought up end‑to‑end transformer LLM inference on the device. The work delivered: a timing‑closed integration at an exact 2:1 clock ratio; a two‑stage boot and a JTAG/DDR mailbox console that overcame platform‑specific constraints; the diagnosis and elimination of a silent misaligned‑load fault that had prevented model loading; an on‑silicon verification establishing the bit‑exact correctness of all eleven LLM compute kernels; and an instrumented performance characterisation that demonstrates, through two independent experiments, that the system is memory‑bandwidth‑bound at a sustained 426–520 MB/s.</p>
+<h2>8.2 Concluding Remarks</h2>
+<p>The results show that a transformer LLM can be executed on an inexpensive, resource‑constrained FPGA using an unmodified accelerator core, and that its performance on this platform is governed by memory movement rather than arithmetic. This understanding both explains the observed throughput and prescribes the path to improving it. The principal remaining work is the measurement of electrical power, which would permit the project&#x27;s efficiency proposition to be evaluated against GPU baselines on the metric for which a low‑frequency FPGA is best suited: energy per token.</p>
+<hr/>
+<h1 class="chapter">References</h1>
+<p>[1] ztachip: an open‑source RISC‑V AI/vision accelerator. Source repository and documentation. (Open‑source project.)</p>
+<p>[2] A. Vaswani, N. Shazeer, N. Parmar, J. Uszkoreit, L. Jones, A. N. Gomez, Ł. Kaiser, and I. Polosukhin, &quot;Attention Is All You Need,&quot; in <em>Advances in Neural Information Processing Systems (NeurIPS)</em>, 2017.</p>
+<p>[3] H. Touvron et al., &quot;LLaMA: Open and Efficient Foundation Language Models,&quot; arXiv:2302.13971, 2023.</p>
+<p>[4] L. Ben Allal et al., &quot;SmolLM2: Compact Instruction‑Tuned Language Models,&quot; Hugging Face, 2024.</p>
+<p>[5] G. Gerganov et al., &quot;GGUF / llama.cpp: LLM inference and quantisation formats,&quot; open‑source project.</p>
+<p>[6] Xilinx, Inc., <em>Zynq‑7000 SoC Technical Reference Manual (UG585)</em>.</p>
+<p>[7] Xilinx, Inc., <em>ZC702 Evaluation Board for the Zynq‑7000 XC7Z020 (UG850)</em>.</p>
+<p>[8] C. Papon et al., <em>VexRiscv: a 32‑bit RISC‑V CPU implemented in SpinalHDL</em>, open‑source project.</p>
+<p>[9] A. Waterman and K. Asanović (eds.), <em>The RISC‑V Instruction Set Manual, Volume I: Unprivileged ISA</em>.</p>
+<p>[10] Xilinx, Inc., <em>UltraFast Design Methodology Guide (UG949)</em> — static timing analysis and clocking.</p>
+<hr/>
+<h1 class="chapter">Appendix A — Timing‑Closure Analysis</h1>
+<p><strong>A.1 Frequency selection.</strong> Because Zynq FCLKs are integer divisions of a 1500 MHz PLL, an exact <code>clk_x2 = 2 × clk_main</code> relationship requires both frequencies to have integral divisors. The pair 93.75 MHz (1500/16) and 187.5 MHz (1500/8) is the highest exact‑ratio pair below 100 MHz.</p>
+<p><strong>A.2 The hold‑violation mechanism.</strong> With the two clocks taken from independent PS outputs, their clock trees shared no common node; the static‑timing analyser could not apply clock‑reconvergence pessimism removal (CRPR), so the full clock uncertainty was charged against the hold check, producing three hold violations. Hold is evaluated on the same clock edge at launch and capture flip‑flops and therefore <em>cannot</em> be corrected by lowering the clock frequency.</p>
+<p><strong>A.3 Resolution.</strong> A single PS clock was routed into an MMCM that generates both <code>clk_main</code> and <code>clk_x2</code> from a common node, restoring CRPR credit; an input‑jitter‑constraint refinement removed the residual deficit. The design then closed with worst negative slack 0.000 ns and worst hold slack +0.009 ns. Raising the memory‑port frequency in Track A1 (Chapter 7) will reopen this analysis.</p>
+<h1 class="chapter">Appendix B — Reproduction Procedures</h1>
+<p>All scripts reside under <code>HW/examples/ZC702/</code> and are invoked as <code>bash &lt;script&gt;</code>. The board is power‑cycled before each fresh run.</p>
+<ul>
+<li><strong>Kernel verification (Chapter 5):</strong> <code>run_kernel_test.sh</code> — programs the bitstream, loads the</li>
+</ul>
+<p>  lean kernel‑test firmware (no model), runs all kernels, and writes   <code>bench/results/kernel_selftest.log</code>.</p>
+<ul>
+<li><strong>Cold bring‑up and chatbot (Chapter 4):</strong> <code>run_board_day.sh</code> — programs the bitstream, loads a</li>
+</ul>
+<p>  model and the firmware, and opens the mailbox console.</p>
+<ul>
+<li><strong>Resume console (model already resident):</strong> <code>run_resume_fw.sh</code>.</li>
+<li><strong>Single‑model benchmark (Chapter 6):</strong> <code>run_model.sh &lt;q4|q8|360m&gt;</code> — writes</li>
+</ul>
+<p>  <code>bench/results/results_&lt;tag&gt;.csv</code>.</p>
+<ul>
+<li><strong>Aggregate the benchmark:</strong> <code>bench/summarize.py</code> — writes <code>bench/results/comparison.md</code>.</li>
+</ul>
+<p>Firmware build modes (in <code>SW/makefile</code>): <code>LLM_TEST=yes</code> (chatbot, default), <code>KERNEL_TEST=yes</code> (kernel self‑test), <code>UNIT_TEST=yes</code> (full suite).</p>
+<h1 class="chapter">Appendix C — Consolidated Memory Map</h1>
+<table>
+<thead><tr>
+<th style="text-align:left">Address range</th>
+<th style="text-align:left">Contents</th>
+<th style="text-align:left">Size</th>
+</tr></thead><tbody>
+<tr>
+<td style="text-align:left">0x00000000 – 0x00003FFF</td>
+<td style="text-align:left">PL BRAM (TCM): stack / scratch</td>
+<td style="text-align:left">16 KB</td>
+</tr>
+<tr>
+<td style="text-align:left">0x00004000 – 0x0003FFFF</td>
+<td style="text-align:left">PS OCM (mapped low); firmware vector stub at 0x00004000</td>
+<td style="text-align:left">~240 KB</td>
+</tr>
+<tr>
+<td style="text-align:left">0x00040000 – 0x000FFFFF</td>
+<td style="text-align:left">Reserved region (not writable via debug)</td>
+<td style="text-align:left">~768 KB</td>
+</tr>
+<tr>
+<td style="text-align:left">0x00100000 – 0x3FFFFFFF</td>
+<td style="text-align:left">PS DDR (main memory)</td>
+<td style="text-align:left">~1 GB</td>
+</tr>
+<tr>
+<td style="text-align:left">— 0x00100000</td>
+<td style="text-align:left">firmware main image</td>
+<td style="text-align:left">—</td>
+</tr>
+<tr>
+<td style="text-align:left">— 0x10000000</td>
+<td style="text-align:left">model file (ZUF); marker <code>&quot;ZTAC&quot;</code></td>
+<td style="text-align:left">—</td>
+</tr>
+<tr>
+<td style="text-align:left">— 0x30000000</td>
+<td style="text-align:left">mailbox console; marker <code>&quot;ZTCH&quot;</code></td>
+<td style="text-align:left">—</td>
+</tr>
+</tbody></table>
+<hr/>
+<p><em>End of report.</em></p>
+</body></html>

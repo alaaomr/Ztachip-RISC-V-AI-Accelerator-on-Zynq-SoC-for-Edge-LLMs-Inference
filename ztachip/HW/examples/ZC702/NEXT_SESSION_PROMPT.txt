@@ -1,0 +1,90 @@
+==============================================================================
+PROMPT TO START THE NEXT CLAUDE SESSION
+==============================================================================
+Copy everything between the lines below and paste it as your FIRST message in
+the new chat. This will give Claude full context to continue from where we
+stopped on 2026-05-29.
+==============================================================================
+
+------ COPY FROM HERE ------
+
+I am Eslam Elsayed, a beginner-level engineer working on a graduation project
+to port the ztachip AI accelerator from Arty A7-100T to Xilinx Zynq ZC702
+(XC7Z020CLG484-1), and then run the SmolLM2-135M LLM on it using Vivado 2025.2
+on Ubuntu 24.04.
+
+The project lives at:
+  ~/Desktop/AIDAChip_Workshop_01/ztachip/
+
+Please first read these files in this order:
+  1. ~/Desktop/AIDAChip_Workshop_01/ztachip/HW/examples/ZC702/PROJECT_STATUS.md
+  2. ~/Desktop/AIDAChip_Workshop_01/ztachip/HW/examples/ZC702/EDITS_DOCUMENTATION.html
+  3. Your saved memory files in
+     ~/.claude/projects/-home-eslam-elshokafy-Desktop-AIDAChip-Workshop-01/memory/
+
+Important context you must respect:
+  - I am a BEGINNER — explain things simply with analogies.
+  - I CANNOT copy commands from your chat responses — write any commands I
+    need to run into script files, then tell me to "source <path>" or
+    "bash <path>".
+  - We chose to keep VexRiscv in PL (the ARM PS provides only DDR + clocks).
+    Do NOT suggest moving control to the ARM PS — that path was rejected.
+  - Target model is SmolLM2-135M (NOT TinyLlama). chat.cpp opens "SMOLLM2.ZUF".
+  - Ethernet is stubbed out in main_zc702.v, so the TFTP model loader will
+    fail. We agreed on JTAG/XSCT pre-load as the replacement.
+
+Where we stopped:
+  - Synthesis + implementation DONE, bitstream generated, but WNS=-1.449 ns
+    (timing violation at 125 MHz). Fix script ready: run_step5_fix_timing.tcl
+    (lowers FCLK0 to 100 MHz). Not yet run because no board on hand.
+  - Vision-kernel RTL simulation PASSED (led_out counted 0→8 in ~1.5 ms sim).
+  - LLM-kernel RTL simulation IN PROGRESS. Firmware rebuilt with 8 LLM tests
+    (residual → SwiGLU → rms → rope → softmax → k_max → cosine → sine,
+    lightest first). sine/cosine are ~5x slower than vision tests so sim is
+    slow. Pragmatic plan: stop sim once led_out ≥ 4 to declare Level 2 done.
+
+What is left:
+  Level 3: Run kernel tests on real ZC702 board (after timing fix)
+  Level 4: Quantize SmolLM2-135M → SMOLLM2.ZUF on host PC
+  Level 5: Replace Ethernet TFTP loader with JTAG/XSCT loader
+  Level 6: Full chat() demo on board (the graduation deliverable)
+
+What I want you to do next:
+  [Fill in here — example: "Continue with Level 3 setup", or "Help me
+  write the JTAG/XSCT loader for Level 5", or "I have new sim results,
+  here is the screenshot", etc.]
+
+Use TaskCreate / TaskList to track work, and confirm with me before doing
+anything destructive (modifying RTL, deleting project, etc.).
+
+------ COPY TO HERE ------
+
+==============================================================================
+USEFUL FILE LOCATIONS (for quick reference)
+==============================================================================
+
+Project root        : ~/Desktop/AIDAChip_Workshop_01/ztachip/
+ZC702 port files    : ztachip/HW/examples/ZC702/
+Project status      : ztachip/HW/examples/ZC702/PROJECT_STATUS.md
+Edits doc (HTML+PDF): ztachip/HW/examples/ZC702/EDITS_DOCUMENTATION.{html,pdf}
+Learning resources  : ztachip/HW/examples/ZC702/LEARNING_RESOURCES.txt
+Run scripts (Tcl)   : ztachip/HW/examples/ZC702/run_step*.tcl, run_sim_*.tcl
+Sim build script    : ztachip/HW/examples/ZC702/run_sim_build.sh
+Modified RTL        : ztachip/HW/src/config.vhd  (exmem_data_width_c=64)
+                      ztachip/HW/simulation/mem64.vhd  (RAM_SIZE=131072)
+                      ztachip/HW/simulation/tb_main.vhd  (NEW — clock wrapper)
+Top-level for ZC702 : ztachip/HW/examples/ZC702/main_zc702.v
+PS block design Tcl : ztachip/HW/examples/ZC702/zynq_ps_bd.tcl
+Sim firmware entry  : ztachip/SW/sim/test_llm_main.cpp
+Sim linker script   : ztachip/SW/sim/linker.ld  (1024k RAM, 512k heap)
+Sim firmware build  : ztachip/SW/makefile.sim
+
+Memory files (Claude's persistent memory across sessions):
+  ~/.claude/projects/-home-eslam-elshokafy-Desktop-AIDAChip-Workshop-01/memory/
+    MEMORY.md                          (index)
+    project_target_model.md            (SmolLM2-135M)
+    project_model_loader_blocker.md    (Ethernet stubbed, need JTAG loader)
+
+==============================================================================
+END OF FILE
+==============================================================================

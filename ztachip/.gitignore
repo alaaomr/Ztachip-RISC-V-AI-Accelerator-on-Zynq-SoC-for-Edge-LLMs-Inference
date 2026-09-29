@@ -1,0 +1,35 @@
+*.o
+*.m.c
+*.p.img
+.cproject
+.project
+HW/examples/GHRD/GHRD.runs/*
+HW/examples/GHRD/GHRD.cache/*
+SW/compiler/Parser.tab.c
+SW/compiler/Parser.tab.h
+SW/compiler/compiler
+SW/compiler/lex.yy.c
+SW/build
+HW/examples/GHRD/ztachip.cache
+HW/examples/GHRD/ztachip.gen
+HW/examples/GHRD/ztachip.hw
+HW/examples/GHRD/ztachip.runs
+HW/examples/GHRD/ztachip.srcs
+HW/examples/GHRD/ztachip.xpr
+HW/examples/GHRD/ztachip.sim
+HW/examples/GHRD/ztachip.ip_user_files
+tools/ghdl/build
+tools/ghdl/soc.v
+
+# ZC702 Vivado project - regenerable from create_project_zc702.tcl (2GB, do NOT commit)
+HW/examples/ZC702/ztachip_zc702.cache
+HW/examples/ZC702/ztachip_zc702.gen
+HW/examples/ZC702/ztachip_zc702.hw
+HW/examples/ZC702/ztachip_zc702.runs
+HW/examples/ZC702/ztachip_zc702.srcs
+HW/examples/ZC702/ztachip_zc702.sim
+HW/examples/ZC702/ztachip_zc702.ip_user_files
+
+# Large regenerable data (model is reloaded from disk; quant is a host binary)
+models/
+SW/apps/llm/gguf/quant
